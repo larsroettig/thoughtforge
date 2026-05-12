@@ -12,6 +12,7 @@ import {
   Timer,
   TrendingUp,
   FolderOpen,
+  Plus,
 } from "lucide-react";
 import { useAppStore } from "@/stores/appStore";
 import { TaskCard } from "./TaskCard";
@@ -77,6 +78,7 @@ export function DashboardView() {
   const smartFilters = useMemo(() => buildSmartFilters(statusColors), [statusColors]);
   const [activeFilter, setActiveFilter] = useState<FilterId>("my_todo");
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [showNewTask, setShowNewTask] = useState(false);
 
   const activeTasks = useMemo(
     () => tasks.filter((t) => !t.archived),
@@ -230,11 +232,20 @@ export function DashboardView() {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="px-6 py-4 border-b border-vault-border">
-        <h2 className="text-xl font-bold text-vault-text-bright">Dashboard</h2>
-        <p className="text-xs text-vault-text-muted mt-0.5">
-          {filterCounts.all_open} open tasks / {filterCounts.overdue > 0 ? `${filterCounts.overdue} overdue / ` : ""}{totalHours.toFixed(1)}h tracked
-        </p>
+      <div className="px-6 py-4 border-b border-vault-border flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-vault-text-bright">Dashboard</h2>
+          <p className="text-xs text-vault-text-muted mt-0.5">
+            {filterCounts.all_open} open tasks / {filterCounts.overdue > 0 ? `${filterCounts.overdue} overdue / ` : ""}{totalHours.toFixed(1)}h tracked
+          </p>
+        </div>
+        <button
+          onClick={() => setShowNewTask(true)}
+          className="btn-primary flex items-center gap-1.5 text-xs"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          New Task
+        </button>
       </div>
 
       <div className="flex-1 flex overflow-hidden">
@@ -371,11 +382,14 @@ export function DashboardView() {
         </div>
       </div>
 
-      {/* Task Modal */}
-      {editingTask && (
+      {/* Task Modal (edit or new) */}
+      {(editingTask || showNewTask) && (
         <TaskModal
           task={editingTask}
-          onClose={() => setEditingTask(null)}
+          onClose={() => {
+            setEditingTask(null);
+            setShowNewTask(false);
+          }}
         />
       )}
     </div>
