@@ -64,7 +64,7 @@ export function parseActions(text: string): { cleanText: string; actions: TaskAc
       actions.push({
         type: "create_task",
         titleMatch: createMatch[1].trim(),
-        value: createMatch[1].trim(), // title is the value for display
+        value: createMatch[1].trim(),
         project: createMatch[2].trim() || "general",
         priority: createMatch[3].trim() || "medium",
         owner: createMatch[4].trim() || "",
@@ -85,10 +85,105 @@ export function parseActions(text: string): { cleanText: string; actions: TaskAc
     }
   }
 
+  // Fallback: if no [[ACTION:...]] found, try to parse JSON response
+  if (actions.length === 0) {
+    const jsonActions = parseJsonResponse(text);
+    if (jsonActions.length > 0) {
+      // Remove JSON block from clean text
+      const cleanText = text
+        .replace(/```json\s*\n?[\s\S]*?\n?```/g, "")
+        .replace(/\{[\s\S]*"(?:Monday|Tuesday|Wednesday|Thursday|Friday|task|due)"[\s\S]*\}/g, "")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+      return { cleanText: cleanText || "Here's your plan (see proposed changes below):", actions: jsonActions };
+    }
+  }
+
   return {
     cleanText: cleanLines.join("\n").replace(/\n{3,}/g, "\n\n").trim(),
     actions,
   };
+}
+
+/**
+ * Parse JSON responses from models that ignore the [[ACTION:...]] format.
+ * Handles structures like:
+ * { "Monday": [{ "task": "title", "due_date": "2026-05-14" }], ... }
+ * or [{ "task": "title", "due_date": "...", "priority": "..." }]
+ */
+function parseJsonResponse(text: string): TaskAction[] {
+  const actions: TaskAction[] = [];
+
+  // Try to extract JSON from the text (might be wrapped in ```json blocks)
+  let jsonStr = text;
+  const codeBlockMatch = text.match(/```json?\s*\n?([\s\S]*?)\n?```/);
+  if (codeBlockMatch) {
+    jsonStr = codeBlockMatch[1];
+  } else {
+    // Try to find a JSON object/array in the text
+    const jsonMatch = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+    if (jsonMatch) {
+      jsonStr = jsonMatch[1];
+    } else {
+      return [];
+    }
+  }
+
+  try {
+    const data = JSON.parse(jsonStr);
+
+    // Format: { "Monday": [...], "Tuesday": [...], ... }
+    const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    if (typeof data === "object" && !Array.isArray(data)) {
+      for (const key of Object.keys(data)) {
+        if (dayNames.some((d) => key.toLowerCase().includes(d.toLowerCase()))) {
+          const dayTasks = data[key];
+          if (Array.isArray(dayTasks)) {
+            for (const item of dayTasks) {
+              const title = item.task || item.title || item.name || "";
+              const due = item.due_date || item.due || item.date || "";
+              if (title && due) {
+                actions.push({
+                  type: "set_due",
+                  titleMatch: title,
+                  value: due,
+                });
+              }
+              // Also handle priority changes
+              if (item.priority) {
+                actions.push({
+                  type: "set_priority",
+                  titleMatch: title,
+                  value: item.priority,
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Format: [{ "task": "...", "due_date": "...", ... }]
+    if (Array.isArray(data)) {
+      for (const item of data) {
+        const title = item.task || item.title || item.name || "";
+        const due = item.due_date || item.due || item.date || "";
+        if (title && due) {
+          actions.push({ type: "set_due", titleMatch: title, value: due });
+        }
+        if (title && item.priority) {
+          actions.push({ type: "set_priority", titleMatch: title, value: item.priority });
+        }
+        if (title && item.status) {
+          actions.push({ type: "set_status", titleMatch: title, value: item.status });
+        }
+      }
+    }
+  } catch {
+    // Not valid JSON, ignore
+  }
+
+  return actions;
 }
 
 export function findTaskByTitle(tasks: Task[], titleMatch: string): Task | null {
