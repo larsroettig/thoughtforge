@@ -9,6 +9,8 @@ import type {
   BoardView,
   ExtractionPreview,
   ActiveTimer,
+  ProjectSpace,
+  SpaceNote,
 } from "@/types";
 
 interface AppState {
@@ -59,6 +61,14 @@ interface AppState {
   // Documents
   extractionPreview: ExtractionPreview | null;
   setExtractionPreview: (preview: ExtractionPreview | null) => void;
+
+  // Project Spaces
+  projectSpaces: ProjectSpace[];
+  setProjectSpaces: (spaces: ProjectSpace[]) => void;
+  activeSpaceId: string | null;
+  setActiveSpaceId: (id: string | null) => void;
+  addProjectSpace: (space: ProjectSpace) => void;
+  updateSpaceNote: (spaceId: string, note: SpaceNote) => void;
 
   // Vault
   vaultInitialized: boolean;
@@ -178,6 +188,28 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Documents
   extractionPreview: null,
   setExtractionPreview: (preview) => set({ extractionPreview: preview }),
+
+  // Project Spaces
+  projectSpaces: [],
+  setProjectSpaces: (spaces) => set({ projectSpaces: spaces }),
+  activeSpaceId: null,
+  setActiveSpaceId: (id) => set({ activeSpaceId: id }),
+  addProjectSpace: (space) =>
+    set((state) => ({ projectSpaces: [...state.projectSpaces, space] })),
+  updateSpaceNote: (spaceId, note) =>
+    set((state) => ({
+      projectSpaces: state.projectSpaces.map((s) => {
+        if (s.id !== spaceId) return s;
+        const existing = s.notes.findIndex((n) => n.id === note.id);
+        const notes = [...s.notes];
+        if (existing >= 0) {
+          notes[existing] = note;
+        } else {
+          notes.push(note);
+        }
+        return { ...s, notes };
+      }),
+    })),
 
   // Vault
   vaultInitialized: false,

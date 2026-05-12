@@ -11,7 +11,9 @@ import {
   ChevronDown,
   Square,
   Timer,
+  Plus,
 } from "lucide-react";
+import { CreateSpaceModal as CreateSpaceModalInline } from "@/components/spaces/CreateSpaceModal";
 import { useAppStore } from "@/stores/appStore";
 import { useVault } from "@/hooks/useVault";
 import type { AppView } from "@/types";
@@ -36,8 +38,12 @@ export function Sidebar() {
     activeTimer,
     stopTimer,
     updateTask,
+    projectSpaces,
+    activeSpaceId,
+    setActiveSpaceId,
   } = useAppStore();
   const { saveTask } = useVault();
+  const [showCreateSpace, setShowCreateSpace] = useState(false);
 
   const [projectsOpen, setProjectsOpen] = useState(true);
   const [elapsed, setElapsed] = useState(0);
@@ -161,71 +167,83 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Projects Tree */}
+      {/* Project Spaces */}
       <div className="flex-1 overflow-y-auto px-3 border-t border-vault-border">
-        <button
-          onClick={() => setProjectsOpen(!projectsOpen)}
-          className="flex items-center gap-1.5 w-full py-2.5 text-[10px] uppercase tracking-wider font-semibold text-vault-text-muted hover:text-vault-text"
-        >
-          {projectsOpen ? (
-            <ChevronDown className="w-3 h-3" />
-          ) : (
-            <ChevronRight className="w-3 h-3" />
-          )}
-          <FolderTree className="w-3 h-3" />
-          Projects
-          <span className="ml-auto text-vault-text-muted font-normal">
-            {projectTree.length}
-          </span>
-        </button>
+        <div className="flex items-center gap-1.5 w-full py-2.5">
+          <button
+            onClick={() => setProjectsOpen(!projectsOpen)}
+            className="flex items-center gap-1.5 flex-1 text-[10px] uppercase tracking-wider font-semibold text-vault-text-muted hover:text-vault-text"
+          >
+            {projectsOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+            <FolderTree className="w-3 h-3" />
+            Spaces
+          </button>
+          <button
+            onClick={() => setShowCreateSpace(true)}
+            className="p-0.5 hover:bg-vault-card rounded text-vault-text-muted hover:text-vault-accent"
+          >
+            <Plus className="w-3 h-3" />
+          </button>
+        </div>
 
         {projectsOpen && (
-          <div className="space-y-0.5 pb-3">
-            {projectTree.map(([name, info]) => {
-              const color = PROJECT_COLORS[name] || PROJECT_COLORS.default;
-              const isActive = projectFilter === name;
-              const pct =
-                info.count > 0
-                  ? Math.round((info.doneCount / info.count) * 100)
-                  : 0;
-
+          <div className="space-y-0.5 pb-2">
+            {/* Project Spaces (clickable into full workspace) */}
+            {projectSpaces.map((space) => {
+              const isActive = currentView === "project-space" && activeSpaceId === space.id;
+              const taskCount = activeTasks.filter((t) => t.project === space.id && t.status !== "done").length;
               return (
                 <button
-                  key={name}
+                  key={space.id}
                   onClick={() => {
-                    setView("board");
-                    setProjectFilter(isActive ? null : name);
+                    setActiveSpaceId(space.id);
+                    setView("project-space");
                   }}
                   className={`flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs transition-colors ${
                     isActive
                       ? "bg-vault-card text-vault-text-bright"
-                      : "text-vault-text-muted hover:bg-vault-card/50 hover:text-vault-text"
+                      : "text-vault-text-muted hover:bg-vault-card hover:text-vault-text"
                   }`}
                 >
-                  <span
-                    className="w-2 h-2 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: color }}
-                  />
-                  <span className="flex-1 text-left truncate">{name}</span>
-                  <span className="text-[10px] text-vault-text-muted">
-                    {info.count - info.doneCount}
-                  </span>
-                  {/* Mini progress bar */}
-                  <div className="w-8 h-1 rounded-full bg-vault-border overflow-hidden">
-                    <div
-                      className="h-full rounded-full"
-                      style={{
-                        width: `${pct}%`,
-                        backgroundColor: color,
-                      }}
-                    />
-                  </div>
+                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: space.color }} />
+                  <span className="flex-1 text-left truncate">{space.name}</span>
+                  {taskCount > 0 && <span className="text-[10px] text-vault-text-muted">{taskCount}</span>}
+                  <span className="text-[10px] text-vault-text-muted">{space.notes.length}n</span>
                 </button>
               );
             })}
+
+            {/* Task-derived projects (no space yet) */}
+            {projectTree
+              .filter(([name]) => !projectSpaces.some((s) => s.id === name))
+              .map(([name, info]) => {
+                const color = PROJECT_COLORS[name] || PROJECT_COLORS.default;
+                const isActive = projectFilter === name && currentView === "board";
+                return (
+                  <button
+                    key={name}
+                    onClick={() => { setView("board"); setProjectFilter(isActive ? null : name); }}
+                    className={`flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs transition-colors ${
+                      isActive ? "bg-vault-card text-vault-text-bright" : "text-vault-text-muted hover:bg-vault-card hover:text-vault-text"
+                    }`}
+                  >
+                    <span className="w-2 h-2 rounded-full flex-shrink-0 opacity-50" style={{ backgroundColor: color }} />
+                    <span className="flex-1 text-left truncate opacity-70">{name}</span>
+                    <span className="text-[10px] text-vault-text-muted">{info.count - info.doneCount}</span>
+                  </button>
+                );
+              })}
+
+            {projectSpaces.length === 0 && projectTree.length === 0 && (
+              <p className="text-[10px] text-vault-text-muted px-2 py-2">No projects yet</p>
+            )}
           </div>
         )}
       </div>
+
+      {showCreateSpace && (
+        <CreateSpaceModalInline onClose={() => setShowCreateSpace(false)} />
+      )}
 
       {/* Quick Stats */}
       <div className="px-4 py-2.5 border-t border-vault-border text-[10px] text-vault-text-muted space-y-0.5">

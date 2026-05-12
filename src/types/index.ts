@@ -89,7 +89,37 @@ export interface ActiveTimer {
   startedAt: number; // timestamp ms
 }
 
-export type AppView = "dashboard" | "board" | "chat" | "documents" | "settings" | "archive";
+// Project Space types
+export interface ProjectSpace {
+  id: string;
+  name: string;
+  description: string;
+  color: string;
+  created: string;
+  documents: SpaceDocument[];
+  notes: SpaceNote[];
+}
+
+export interface SpaceDocument {
+  name: string;
+  path: string;
+  type: string;
+  added: string;
+  size: number;
+}
+
+export interface SpaceNote {
+  id: string;
+  title: string;
+  type: "daily" | "meeting" | "note";
+  date: string;
+  content: string;
+  tags: string[];
+}
+
+export type AppView = "dashboard" | "board" | "chat" | "documents" | "settings" | "archive" | "project-space";
+
+export type ProjectSpaceTab = "overview" | "documents" | "notes" | "meetings" | "tasks" | "knowledge";
 
 export const URGENCY_COLUMNS: BoardColumn[] = [
   { id: "critical", title: "Critical / Blockers", color: "#f85149", taskIds: [] },
