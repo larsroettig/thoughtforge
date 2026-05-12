@@ -4,6 +4,7 @@ import type { Task, TaskStatus, TaskPriority, TaskUrgency } from "@/types";
 import { useVault } from "@/hooks/useVault";
 import { useAppStore } from "@/stores/appStore";
 import { OwnerSelect } from "./OwnerSelect";
+import { ProjectSelect } from "./ProjectSelect";
 
 interface TaskModalProps {
   task: Task | null;
@@ -149,12 +150,9 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
               <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
                 Project
               </label>
-              <input
-                type="text"
+              <ProjectSelect
                 value={form.project}
-                onChange={(e) => update("project", e.target.value)}
-                placeholder="e.g. hackathon"
-                className="input-base w-full"
+                onChange={(val) => update("project", val)}
               />
             </div>
 
