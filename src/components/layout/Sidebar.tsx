@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   LayoutDashboard,
   Gauge,
@@ -12,6 +12,8 @@ import {
   Square,
   Timer,
   Plus,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { CreateSpaceModal as CreateSpaceModalInline } from "@/components/spaces/CreateSpaceModal";
 import { useAppStore } from "@/stores/appStore";
@@ -27,6 +29,143 @@ const NAV_ITEMS: { id: AppView; label: string; icon: typeof LayoutDashboard }[] 
   { id: "archive", label: "Archive", icon: Archive },
   { id: "settings", label: "Settings", icon: Settings },
 ];
+
+// ── Space Item with right-click context menu ──────────────────────────
+function SpaceItem({
+  space,
+  isActive,
+  taskCount,
+  onOpen,
+}: {
+  space: { id: string; name: string; color: string; notes: unknown[] };
+  isActive: boolean;
+  taskCount: number;
+  onOpen: () => void;
+}) {
+  const { projectSpaces, setProjectSpaces } = useAppStore();
+  const { saveSpace, deleteSpace } = useVault();
+  const [showMenu, setShowMenu] = useState(false);
+  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
+  const [renaming, setRenaming] = useState(false);
+  const [newName, setNewName] = useState(space.name);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setShowMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showMenu]);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setMenuPos({ x: e.clientX, y: e.clientY });
+    setShowMenu(true);
+  }, []);
+
+  const handleRename = useCallback(async () => {
+    if (!newName.trim()) return;
+    const full = projectSpaces.find((s) => s.id === space.id);
+    if (!full) return;
+    const updated = { ...full, name: newName.trim() };
+    setProjectSpaces(projectSpaces.map((s) => (s.id === space.id ? updated : s)));
+    await saveSpace(updated);
+    setRenaming(false);
+    setShowMenu(false);
+  }, [newName, space.id, projectSpaces, setProjectSpaces, saveSpace]);
+
+  const handleArchive = useCallback(async () => {
+    const full = projectSpaces.find((s) => s.id === space.id);
+    if (!full) return;
+    const updated = { ...full, archived: true };
+    setProjectSpaces(projectSpaces.map((s) => (s.id === space.id ? updated : s)));
+    await saveSpace(updated);
+    setShowMenu(false);
+  }, [space.id, projectSpaces, setProjectSpaces, saveSpace]);
+
+  const handleDelete = useCallback(async () => {
+    await deleteSpace(space.id);
+    setShowMenu(false);
+  }, [space.id, deleteSpace]);
+
+  if (renaming) {
+    return (
+      <div className="flex items-center gap-1 px-1">
+        <input
+          type="text"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleRename();
+            if (e.key === "Escape") { setRenaming(false); setNewName(space.name); }
+          }}
+          autoFocus
+          className="input-base text-xs flex-1 py-1 px-1.5"
+        />
+        <button onClick={handleRename} className="text-[10px] text-vault-accent hover:underline">OK</button>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <button
+        onClick={onOpen}
+        onContextMenu={handleContextMenu}
+        className={`flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs transition-colors ${
+          isActive
+            ? "bg-vault-card text-vault-text-bright"
+            : "text-vault-text-muted hover:bg-vault-card hover:text-vault-text"
+        }`}
+      >
+        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: space.color }} />
+        <span className="flex-1 text-left truncate">{space.name}</span>
+        {taskCount > 0 && <span className="text-[10px] text-vault-text-muted">{taskCount}</span>}
+        <span className="text-[10px] text-vault-text-muted">{space.notes.length}n</span>
+      </button>
+
+      {showMenu && (
+        <div
+          ref={menuRef}
+          className="fixed z-[100] bg-vault-surface border border-vault-border rounded-xl shadow-2xl py-1.5 w-44"
+          style={{
+            left: Math.min(menuPos.x, window.innerWidth - 190),
+            top: Math.min(menuPos.y, window.innerHeight - 160),
+          }}
+        >
+          <button
+            onClick={(e) => { e.stopPropagation(); setRenaming(true); setShowMenu(false); }}
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-vault-text hover:bg-vault-card rounded-md"
+          >
+            <Pencil className="w-3.5 h-3.5" /> Rename
+          </button>
+          {space.id !== "general" && (
+            <>
+              <button
+                onClick={(e) => { e.stopPropagation(); handleArchive(); }}
+                className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-vault-text hover:bg-vault-card rounded-md"
+              >
+                <Archive className="w-3.5 h-3.5" /> Archive
+              </button>
+              <div className="border-t border-vault-border my-1" />
+              <button
+                onClick={(e) => { e.stopPropagation(); handleDelete(); }}
+                className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-vault-critical hover:bg-vault-critical/10 rounded-md"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Delete
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
 
 export function Sidebar() {
   const {
@@ -188,30 +327,16 @@ export function Sidebar() {
 
         {projectsOpen && (
           <div className="space-y-0.5 pb-2">
-            {/* Project Spaces (clickable into full workspace) -- hide archived */}
-            {projectSpaces.filter((s) => !s.archived).map((space) => {
-              const isActive = currentView === "project-space" && activeSpaceId === space.id;
-              const taskCount = activeTasks.filter((t) => t.project === space.id && t.status !== "done").length;
-              return (
-                <button
-                  key={space.id}
-                  onClick={() => {
-                    setActiveSpaceId(space.id);
-                    setView("project-space");
-                  }}
-                  className={`flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs transition-colors ${
-                    isActive
-                      ? "bg-vault-card text-vault-text-bright"
-                      : "text-vault-text-muted hover:bg-vault-card hover:text-vault-text"
-                  }`}
-                >
-                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: space.color }} />
-                  <span className="flex-1 text-left truncate">{space.name}</span>
-                  {taskCount > 0 && <span className="text-[10px] text-vault-text-muted">{taskCount}</span>}
-                  <span className="text-[10px] text-vault-text-muted">{space.notes.length}n</span>
-                </button>
-              );
-            })}
+            {/* Project Spaces (clickable, right-click for context menu) */}
+            {projectSpaces.filter((s) => !s.archived).map((space) => (
+              <SpaceItem
+                key={space.id}
+                space={space}
+                isActive={currentView === "project-space" && activeSpaceId === space.id}
+                taskCount={activeTasks.filter((t) => t.project === space.id && t.status !== "done").length}
+                onOpen={() => { setActiveSpaceId(space.id); setView("project-space"); }}
+              />
+            ))}
 
             {/* Task-derived projects (no space yet) */}
             {projectTree
