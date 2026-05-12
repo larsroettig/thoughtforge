@@ -65,6 +65,7 @@ export function ProjectSpaceView() {
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "idle">("idle");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [bookHours, setBookHours] = useState("");
+  const [bookDate, setBookDate] = useState(new Date().toISOString().split("T")[0]);
   const [bookDesc, setBookDesc] = useState("");
   const [previewMode, setPreviewMode] = useState(false);
   const [showCreateTask, setShowCreateTask] = useState(false);
@@ -232,7 +233,7 @@ export function ProjectSpaceView() {
     if (parsed === null || parsed <= 0) return;
     const entry: TimeEntry = {
       id: `time_${Date.now()}`,
-      date: new Date().toISOString().split("T")[0],
+      date: bookDate || new Date().toISOString().split("T")[0],
       hours: Math.round(parsed * 100) / 100,
       description: bookDesc,
     };
@@ -391,13 +392,19 @@ export function ProjectSpaceView() {
               <h3 className="text-xs font-semibold text-vault-text-muted uppercase tracking-wide mb-3 flex items-center gap-1.5">
                 <Clock className="w-3 h-3" /> Book Hours
               </h3>
-              <div className="flex gap-2">
+              <div className="flex gap-2 mb-1">
+                <input
+                  type="date"
+                  value={bookDate}
+                  onChange={(e) => setBookDate(e.target.value)}
+                  className="input-base w-32 text-xs"
+                />
                 <input
                   type="text"
                   value={bookHours}
                   onChange={(e) => setBookHours(e.target.value)}
-                  placeholder="1h30m, 45m, 2h..."
-                  className="input-base w-28 text-sm"
+                  placeholder="1h30m"
+                  className="input-base w-20 text-sm"
                 />
                 <input
                   type="text"
@@ -415,20 +422,87 @@ export function ProjectSpaceView() {
                   Log
                 </button>
               </div>
-              <p className="text-[9px] text-vault-text-muted mt-1">
-                Formats: 45m, 1h, 1h30m, 1.5, 0:45
-              </p>
-              {(space.timeEntries || []).length > 0 && (
-                <div className="mt-3 space-y-1 max-h-32 overflow-y-auto">
-                  {[...(space.timeEntries || [])].reverse().slice(0, 5).map((e) => (
-                    <div key={e.id} className="flex items-center gap-2 text-[10px] text-vault-text-muted">
-                      <span className="text-vault-text font-medium">{formatHours(e.hours)}</span>
-                      <span className="truncate flex-1">{e.description || "No description"}</span>
-                      <span>{e.date}</span>
+
+              {/* Weekly timesheet grid */}
+              {(() => {
+                const entries = space.timeEntries || [];
+                if (entries.length === 0) return null;
+
+                // Get current week Mon-Fri
+                const now = new Date();
+                const dayOfWeek = now.getDay();
+                const monday = new Date(now);
+                monday.setDate(now.getDate() - ((dayOfWeek + 6) % 7));
+                monday.setHours(0, 0, 0, 0);
+                const weekDays = Array.from({ length: 5 }, (_, i) => {
+                  const d = new Date(monday);
+                  d.setDate(monday.getDate() + i);
+                  return d.toISOString().split("T")[0];
+                });
+
+                const weekEntries = entries.filter((e) => weekDays.includes(e.date));
+                const weekTotal = weekEntries.reduce((s, e) => s + e.hours, 0);
+
+                return (
+                  <div className="mt-3">
+                    <p className="text-[10px] text-vault-text-muted mb-2 font-semibold uppercase tracking-wider">This Week</p>
+                    <div className="flex gap-1 mb-2">
+                      {weekDays.map((d) => {
+                        const dayEntries = weekEntries.filter((e) => e.date === d);
+                        const dayTotal = dayEntries.reduce((s, e) => s + e.hours, 0);
+                        const isToday = d === new Date().toISOString().split("T")[0];
+                        const date = new Date(d + "T12:00:00");
+                        return (
+                          <div
+                            key={d}
+                            className={`flex-1 rounded-lg p-1.5 text-center cursor-pointer ${
+                              isToday ? "bg-vault-accent/10 border border-vault-accent/20" : "bg-vault-bg"
+                            }`}
+                            onClick={() => setBookDate(d)}
+                          >
+                            <p className={`text-[9px] font-medium ${isToday ? "text-vault-accent" : "text-vault-text-muted"}`}>
+                              {date.toLocaleDateString("en-US", { weekday: "short" })}
+                            </p>
+                            <p className={`text-xs font-bold ${dayTotal > 0 ? "text-vault-text-bright" : "text-vault-text-muted opacity-30"}`}>
+                              {dayTotal > 0 ? formatHours(dayTotal) : "-"}
+                            </p>
+                          </div>
+                        );
+                      })}
+                      <div className="flex-1 rounded-lg p-1.5 text-center bg-vault-card">
+                        <p className="text-[9px] font-medium text-vault-text-muted">Total</p>
+                        <p className="text-xs font-bold text-vault-accent">{formatHours(weekTotal)}</p>
+                      </div>
                     </div>
-                  ))}
-                </div>
-              )}
+
+                    {/* Entries for selected date */}
+                    {(() => {
+                      const dateEntries = entries.filter((e) => e.date === bookDate).sort((a, b) => b.id.localeCompare(a.id));
+                      if (dateEntries.length === 0) return null;
+                      return (
+                        <div className="space-y-1 max-h-24 overflow-y-auto">
+                          {dateEntries.map((e) => (
+                            <div key={e.id} className="flex items-center gap-2 text-[10px] text-vault-text-muted">
+                              <span className="text-vault-text font-medium w-10">{formatHours(e.hours)}</span>
+                              <span className="truncate flex-1">{e.description || "No description"}</span>
+                              <button
+                                onClick={async () => {
+                                  const updated = { ...space, timeEntries: space.timeEntries.filter((t) => t.id !== e.id) };
+                                  setProjectSpaces(projectSpaces.map((s) => (s.id === space.id ? updated : s)));
+                                  await persistSpace(updated);
+                                }}
+                                className="text-vault-critical hover:bg-vault-critical/10 p-0.5 rounded opacity-0 group-hover:opacity-100"
+                              >
+                                <Trash2 className="w-2.5 h-2.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Overdue alert */}
