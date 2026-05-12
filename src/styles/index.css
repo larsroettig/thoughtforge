@@ -1,0 +1,111 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ====== LIGHT MODE (default) ====== */
+:root {
+  --vault-bg: #f5f6fa;
+  --vault-surface: #ffffff;
+  --vault-card: #f0f1f6;
+  --vault-border: #d8dbe5;
+  --vault-text: #3a3f4b;
+  --vault-text-muted: #8b90a0;
+  --vault-text-bright: #1a1d27;
+  --vault-accent: #6c5ce7;
+  --vault-accent-hover: #7b6cf0;
+  --vault-critical: #e74c3c;
+  --vault-warning: #e67e22;
+  --vault-success: #27ae60;
+  --vault-purple: #7B5BFF;
+  --vault-orange: #f0883e;
+}
+
+/* ====== DARK MODE ====== */
+.dark {
+  --vault-bg: #0d1117;
+  --vault-surface: #161b22;
+  --vault-card: #21262d;
+  --vault-border: #30363d;
+  --vault-text: #c9d1d9;
+  --vault-text-muted: #8b949e;
+  --vault-text-bright: #e6edf3;
+  --vault-accent: #7B5BFF;
+  --vault-accent-hover: #9A7AFF;
+  --vault-critical: #f85149;
+  --vault-warning: #d29922;
+  --vault-success: #3fb950;
+  --vault-purple: #bc8cff;
+  --vault-orange: #f0883e;
+}
+
+@layer base {
+  body {
+    @apply bg-vault-bg text-vault-text antialiased;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-vault-border rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-vault-text-muted;
+  }
+}
+
+@layer components {
+  .sidebar-btn {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
+           text-vault-text-muted hover:text-vault-text hover:bg-vault-card
+           transition-colors cursor-pointer w-full;
+  }
+
+  .sidebar-btn.active {
+    @apply text-vault-accent bg-vault-card;
+  }
+
+  .card-base {
+    @apply bg-vault-card border border-vault-border rounded-lg p-3
+           transition-all cursor-default;
+  }
+
+  .card-base:hover {
+    border-color: var(--vault-accent);
+  }
+
+  .tag {
+    @apply text-xs px-2 py-0.5 rounded-full font-medium;
+  }
+
+  .input-base {
+    @apply bg-vault-bg border border-vault-border rounded-lg px-3 py-2
+           text-vault-text text-sm placeholder:text-vault-text-muted
+           focus:outline-none focus:border-vault-accent focus:ring-1
+           transition-colors;
+    --tw-ring-color: var(--vault-accent);
+  }
+
+  .btn-primary {
+    @apply bg-vault-accent hover:bg-vault-accent-hover text-white
+           px-4 py-2 rounded-lg text-sm font-medium transition-colors;
+  }
+
+  .btn-ghost {
+    @apply text-vault-text-muted hover:text-vault-text hover:bg-vault-card
+           px-3 py-2 rounded-lg text-sm transition-colors;
+  }
+}
+
+/* Drag and drop styles */
+[data-rbd-draggable-context-id] {
+  outline: none !important;
+}

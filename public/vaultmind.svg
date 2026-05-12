@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="gP" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7B5BFF"/>
+      <stop offset="100%" stop-color="#9A44D8"/>
+    </linearGradient>
+    <linearGradient id="gB" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#173B7A"/>
+      <stop offset="100%" stop-color="#0F2553"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded square background -->
+  <rect width="512" height="512" rx="108" fill="white"/>
+
+  <g transform="translate(42, 56) scale(0.66)">
+    <!-- Brain (left side, organic curves) -->
+    <path d="M205 95
+             C165 55, 97 62, 72 110
+             C55 142, 62 176, 86 201
+             C54 226, 49 274, 77 305
+             C95 325, 120 338, 148 337
+             C158 372, 189 397, 226 399
+             C246 400, 267 395, 284 385
+             C300 374, 311 359, 315 343
+             C289 332, 274 308, 276 283
+             C278 253, 296 228, 323 217
+             C310 184, 313 147, 334 120
+             C315 104, 292 96, 267 98
+             C251 99, 233 102, 205 95 Z"
+          fill="none" stroke="url(#gP)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Brain folds -->
+    <path d="M131 141 C141 121, 160 108, 182 107" fill="none" stroke="url(#gP)" stroke-width="10" stroke-linecap="round"/>
+    <path d="M110 200 C126 181, 146 172, 170 172" fill="none" stroke="url(#gP)" stroke-width="10" stroke-linecap="round"/>
+    <path d="M118 265 C136 246, 160 238, 187 238" fill="none" stroke="url(#gP)" stroke-width="10" stroke-linecap="round"/>
+    <path d="M151 336 C166 314, 187 304, 214 304" fill="none" stroke="url(#gP)" stroke-width="10" stroke-linecap="round"/>
+    <path d="M224 146 C238 126, 258 116, 284 116" fill="none" stroke="url(#gP)" stroke-width="10" stroke-linecap="round"/>
+    <path d="M240 216 C256 196, 275 186, 300 186" fill="none" stroke="url(#gP)" stroke-width="10" stroke-linecap="round"/>
+
+    <!-- Vault body -->
+    <path d="M325 58
+             H600
+             C628 58 651 81 651 109
+             V490
+             C651 518 628 541 600 541
+             H325
+             C297 541 274 518 274 490
+             V109
+             C274 81 297 58 325 58 Z"
+          fill="white" stroke="url(#gB)" stroke-width="12"/>
+
+    <!-- Vault inner border -->
+    <path d="M354 88
+             H572
+             C593 88 610 105 610 126
+             V473
+             C610 494 593 511 572 511
+             H354
+             C333 511 316 494 316 473
+             V126
+             C316 105 333 88 354 88 Z"
+          fill="none" stroke="url(#gB)" stroke-width="10"/>
+
+    <!-- Vault door knob -->
+    <circle cx="604" cy="299" r="37" fill="white" stroke="url(#gB)" stroke-width="10"/>
+    <circle cx="604" cy="299" r="14" fill="none" stroke="url(#gB)" stroke-width="8"/>
+    <g stroke="url(#gB)" stroke-width="10" stroke-linecap="round">
+      <line x1="604" y1="247" x2="604" y2="222"/>
+      <line x1="604" y1="376" x2="604" y2="351"/>
+      <line x1="552" y1="299" x2="527" y2="299"/>
+      <line x1="681" y1="299" x2="656" y2="299"/>
+    </g>
+  </g>
+</svg>

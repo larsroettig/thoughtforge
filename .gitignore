@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Build artifacts
+dist/
+src-tauri/target/
+
+# User data (NEVER commit - lives in ~/Documents/VaultMind/)
+tasks/
+chats/
+uploads/
+projects/
+boards/
+templates/
+
+# Local config (contains personal paths)
+config.yaml
+
+# Environment
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Rust
+**/*.rs.bk
+Cargo.lock
+
+# Tauri
+src-tauri/icons/icon.iconset/
+
+# Debug
+*.log
+npm-debug.log*
