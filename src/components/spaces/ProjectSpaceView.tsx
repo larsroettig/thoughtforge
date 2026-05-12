@@ -29,6 +29,7 @@ import { marked } from "marked";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useAppStore } from "@/stores/appStore";
 import { useVault } from "@/hooks/useVault";
+import { useLlm } from "@/hooks/useLlm";
 import type { ProjectSpaceTab, SpaceNote, Task, StatusColors, TimeEntry } from "@/types";
 import { PROJECT_COLORS, DEFAULT_STATUS_COLORS } from "@/types";
 import { TaskCard } from "@/components/board/TaskCard";
@@ -54,7 +55,8 @@ export function ProjectSpaceView() {
     setProjectSpaces,
     config,
   } = useAppStore();
-  const { saveSpace: persistSpace, deleteSpace } = useVault();
+  const { saveSpace: persistSpace, deleteSpace, saveTask } = useVault();
+  const { extractTasksFromText, isProcessing: llmProcessing } = useLlm();
 
   const [activeTab, setActiveTab] = useState<ProjectSpaceTab>("overview");
   const [editingNote, setEditingNote] = useState<SpaceNote | null>(null);
@@ -697,53 +699,16 @@ export function ProjectSpaceView() {
                     />
                   )}
 
-                  {/* Create Task from Note Modal */}
+                  {/* Create Tasks from Note via LLM */}
                   {showCreateTask && (
-                    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={() => setShowCreateTask(false)}>
-                      <div className="bg-vault-surface border border-vault-border rounded-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
-                        <h3 className="text-sm font-bold text-vault-text-bright mb-3 flex items-center gap-2">
-                          <ListPlus className="w-4 h-4 text-vault-accent" />
-                          Create Task from Note
-                        </h3>
-                        <p className="text-xs text-vault-text-muted mb-4">
-                          This will open the task editor pre-filled with info from "{editingNote.title}".
-                        </p>
-                        <div className="flex gap-2 justify-end">
-                          <button onClick={() => setShowCreateTask(false)} className="btn-ghost text-xs">Cancel</button>
-                          <button
-                            onClick={() => {
-                              setShowCreateTask(false);
-                              // Create a task pre-filled from the note
-                              setEditingTask({
-                                id: "",
-                                title: editingNote.title.replace(/^(Daily Note|Meeting Notes) - .*$/, "").trim() || editingNote.title,
-                                status: "todo",
-                                priority: "medium",
-                                urgency: "ongoing",
-                                project: space?.id || "general",
-                                owner: config.user_name || "",
-                                collaborators: [],
-                                source: `note:${editingNote.id}`,
-                                source_quote: editingNote.content.slice(0, 200),
-                                created: new Date().toISOString().split("T")[0],
-                                due: "",
-                                estimated_hours: 0,
-                                actual_hours: 0,
-                                blocked_by: [],
-                                subtasks: [],
-                                notes: `From note: ${editingNote.title}\n\n${editingNote.content.slice(0, 500)}`,
-                                archived: false,
-                                time_only: false,
-                              } as Task);
-                            }}
-                            className="btn-primary text-xs flex items-center gap-1.5"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                            Create Task
-                          </button>
-                        </div>
-                      </div>
-                    </div>
+                    <NoteToTasksModal
+                      note={editingNote}
+                      projectId={space?.id || "general"}
+                      onClose={() => setShowCreateTask(false)}
+                      extractTasksFromText={extractTasksFromText}
+                      saveTask={saveTask}
+                      isProcessing={llmProcessing}
+                    />
                   )}
                 </>
               ) : (
@@ -852,6 +817,213 @@ ${openTasks.map((t) => `- [${t.status}] ${t.title} (${t.priority}) owner:${t.own
       </div>
 
       {editingTask && <TaskModal task={editingTask} onClose={() => setEditingTask(null)} />}
+    </div>
+  );
+}
+
+// ── Note-to-Tasks Modal (LLM extraction) ──────────────────────────────
+function NoteToTasksModal({
+  note,
+  projectId,
+  onClose,
+  extractTasksFromText,
+  saveTask,
+  isProcessing,
+}: {
+  note: SpaceNote;
+  projectId: string;
+  onClose: () => void;
+  extractTasksFromText: (text: string, source: string) => Promise<Partial<Task>[]>;
+  saveTask: (task: Task) => Promise<void>;
+  isProcessing: boolean;
+}) {
+  const { config, llmConnected } = useAppStore();
+  const [extracted, setExtracted] = useState<Partial<Task>[]>([]);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [phase, setPhase] = useState<"idle" | "extracting" | "review" | "done">("idle");
+  const [error, setError] = useState("");
+
+  const handleExtract = useCallback(async () => {
+    setPhase("extracting");
+    setError("");
+    try {
+      const prompt = `Note title: ${note.title}\nDate: ${note.date}\nType: ${note.type}\n\n${note.content}`;
+      const tasks = await extractTasksFromText(prompt, `note:${note.id}`);
+
+      // Set project to current space for all extracted tasks
+      const withProject = tasks.map((t) => ({
+        ...t,
+        project: t.project || projectId,
+        owner: t.owner || config.user_name || "",
+      }));
+
+      setExtracted(withProject);
+      setSelected(new Set(withProject.map((_, i) => i)));
+      setPhase("review");
+    } catch (err) {
+      setError(String(err));
+      setPhase("idle");
+    }
+  }, [note, projectId, config.user_name, extractTasksFromText]);
+
+  const handleApply = useCallback(async () => {
+    let count = 0;
+    for (const i of selected) {
+      const partial = extracted[i];
+      if (!partial) continue;
+      const task: Task = {
+        id: partial.id || `task_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        title: partial.title || "Untitled",
+        status: "todo",
+        priority: (partial.priority as Task["priority"]) || "medium",
+        urgency: (partial.urgency as Task["urgency"]) || "ongoing",
+        project: partial.project || projectId,
+        owner: partial.owner || "",
+        collaborators: [],
+        source: `note:${note.id}`,
+        source_quote: partial.source_quote || "",
+        created: new Date().toISOString().split("T")[0],
+        due: partial.due || "",
+        estimated_hours: 0,
+        actual_hours: 0,
+        blocked_by: [],
+        subtasks: partial.subtasks || [],
+        notes: "",
+        archived: false,
+        time_only: false,
+      };
+      await saveTask(task);
+      count++;
+      await new Promise((r) => setTimeout(r, 15));
+    }
+    setPhase("done");
+    setTimeout(onClose, 1500);
+  }, [extracted, selected, projectId, note.id, saveTask, onClose]);
+
+  const toggleItem = (i: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-vault-surface border border-vault-border rounded-xl w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="px-5 py-4 border-b border-vault-border">
+          <h3 className="text-sm font-bold text-vault-text-bright flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-vault-accent" />
+            Extract Tasks from Note
+          </h3>
+          <p className="text-[10px] text-vault-text-muted mt-1">
+            AI will analyze "{note.title}" and suggest actionable tasks.
+          </p>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-5">
+          {/* Idle -- show Extract button */}
+          {phase === "idle" && (
+            <div className="text-center py-8">
+              {!llmConnected || !config.active_model ? (
+                <div>
+                  <p className="text-sm text-vault-warning mb-2">LM Studio not connected or no model loaded.</p>
+                  <p className="text-xs text-vault-text-muted">Connect LM Studio and select a model in Settings first.</p>
+                </div>
+              ) : (
+                <>
+                  <Sparkles className="w-8 h-8 mx-auto mb-3 text-vault-accent opacity-40" />
+                  <p className="text-sm text-vault-text-muted mb-4">
+                    The AI will read your note and extract action items, to-dos, and follow-ups as tasks.
+                  </p>
+                  <button onClick={handleExtract} className="btn-primary text-sm flex items-center gap-2 mx-auto">
+                    <Sparkles className="w-4 h-4" />
+                    Extract Tasks
+                  </button>
+                </>
+              )}
+              {error && <p className="text-xs text-vault-critical mt-3">{error}</p>}
+            </div>
+          )}
+
+          {/* Extracting */}
+          {phase === "extracting" && (
+            <div className="text-center py-12">
+              <div className="w-8 h-8 border-2 border-vault-accent border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+              <p className="text-sm text-vault-text-muted">Analyzing note content...</p>
+            </div>
+          )}
+
+          {/* Review extracted tasks */}
+          {phase === "review" && (
+            <div>
+              <p className="text-xs text-vault-text-muted mb-3">
+                Found {extracted.length} task{extracted.length !== 1 ? "s" : ""}. Select which to create:
+              </p>
+              <div className="space-y-2">
+                {extracted.map((task, i) => (
+                  <div
+                    key={i}
+                    onClick={() => toggleItem(i)}
+                    className={`card-base p-3 cursor-pointer flex items-start gap-2.5 ${
+                      selected.has(i) ? "border-vault-accent" : "opacity-50"
+                    }`}
+                  >
+                    <div className={`w-4 h-4 rounded border flex-shrink-0 mt-0.5 flex items-center justify-center ${
+                      selected.has(i) ? "bg-vault-accent border-vault-accent" : "border-vault-border"
+                    }`}>
+                      {selected.has(i) && <CheckCircle2 className="w-2.5 h-2.5 text-white" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-vault-text-bright">{task.title}</p>
+                      {task.source_quote && (
+                        <p className="text-[10px] text-vault-text-muted italic mt-0.5 line-clamp-1">"{task.source_quote}"</p>
+                      )}
+                      <div className="flex gap-1.5 mt-1.5">
+                        {task.priority && <span className="tag text-[9px] bg-vault-bg border border-vault-border">{task.priority}</span>}
+                        {task.project && <span className="tag text-[9px] bg-vault-accent/10 text-vault-accent border border-vault-accent/20">{task.project}</span>}
+                        {task.owner && <span className="tag text-[9px] bg-vault-bg border border-vault-border">{task.owner}</span>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {extracted.length === 0 && (
+                <p className="text-sm text-vault-text-muted text-center py-4">No tasks found in this note.</p>
+              )}
+            </div>
+          )}
+
+          {/* Done */}
+          {phase === "done" && (
+            <div className="text-center py-8">
+              <CheckCircle2 className="w-10 h-10 text-vault-success mx-auto mb-3" />
+              <p className="text-sm text-vault-text-bright">{selected.size} task{selected.size !== 1 ? "s" : ""} created</p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        {phase === "review" && extracted.length > 0 && (
+          <div className="px-5 py-3 border-t border-vault-border flex items-center justify-between">
+            <span className="text-[10px] text-vault-text-muted">{selected.size} of {extracted.length} selected</span>
+            <div className="flex gap-2">
+              <button onClick={onClose} className="btn-ghost text-xs">Cancel</button>
+              <button
+                onClick={handleApply}
+                disabled={selected.size === 0}
+                className="btn-primary text-xs flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Create {selected.size} Task{selected.size !== 1 ? "s" : ""}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
