@@ -86,6 +86,8 @@ pub struct VaultConfig {
     #[serde(default)]
     pub user_name: String,
     #[serde(default)]
+    pub country: String,
+    #[serde(default)]
     pub status_colors: StatusColors,
 }
 
@@ -99,6 +101,7 @@ impl Default for VaultConfig {
             auto_process: true,
             theme: "dark".to_string(),
             user_name: String::new(),
+            country: "DE".to_string(),
             status_colors: StatusColors::default(),
         }
     }

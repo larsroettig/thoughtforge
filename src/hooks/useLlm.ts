@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useAppStore } from "@/stores/appStore";
 import type { ChatMessage, Task } from "@/types";
+import { getNonWorkingDays, isWorkingDay } from "@/lib/holidays";
 
 const EXTRACTION_SYSTEM_PROMPT = `You are an expert at extracting action items from meeting transcripts.
 
@@ -65,17 +66,25 @@ Examples:
 ## Planning with actions
 When planning a day or week, use set_due on EXISTING tasks. Create new tasks only if the user explicitly asks.
 
+CRITICAL RULES FOR SCHEDULING:
+- NEVER schedule tasks on non-working days (weekends or public holidays)
+- The context includes a list of non-working days for the current period
+- If a task is currently due on a non-working day, move it to the next working day
+- Saturday and Sunday are ALWAYS non-working days
+
 When the user asks to plan their day (/plan-day):
-1. Look at overdue, due-today, and high-priority tasks
-2. Pick 3-5 tasks for today
-3. Set their due dates to today using [[ACTION: set_due | ... | YYYY-MM-DD]]
-4. Present the plan clearly
+1. Check if today is a working day. If not, say so and plan for the next working day instead
+2. Look at overdue, due-today, and high-priority tasks
+3. Pick 3-5 tasks for today (or next working day)
+4. Set their due dates using [[ACTION: set_due | ... | YYYY-MM-DD]]
+5. Present the plan clearly
 
 When the user asks to plan their week (/plan-week):
 1. Look at all open tasks, deadlines, priorities
-2. Distribute tasks across Mon-Fri (2-4 per day)
+2. Distribute tasks across WORKING DAYS ONLY (skip weekends and holidays listed in context)
 3. Set due dates using [[ACTION: set_due | ... | YYYY-MM-DD]] for each
-4. Present the day-by-day plan
+4. Present the day-by-day plan with only working days
+5. If a task is currently on a non-working day, reschedule it
 
 IMPORTANT:
 - Always include [[ACTION:...]] blocks when modifying or creating tasks
@@ -316,6 +325,7 @@ export function useLlm() {
   const buildContextPrompt = useCallback((): string => {
     const today = new Date().toISOString().split("T")[0];
     const weekday = new Date().toLocaleDateString("en-US", { weekday: "long" });
+    const country = config.country || "DE";
 
     const activeTasks = tasks.filter((t) => !t.archived);
     const openTasks = activeTasks.filter((t) => t.status !== "done");
@@ -323,10 +333,21 @@ export function useLlm() {
     const dueToday = openTasks.filter((t) => t.due === today);
 
     const weekEnd = new Date();
-    weekEnd.setDate(weekEnd.getDate() + (5 - weekEnd.getDay()));
+    weekEnd.setDate(weekEnd.getDate() + 14); // Look 2 weeks ahead
     const weekEndStr = weekEnd.toISOString().split("T")[0];
     const dueThisWeek = openTasks.filter(
       (t) => t.due && t.due >= today && t.due <= weekEndStr
+    );
+
+    // Non-working days in the next 2 weeks
+    const nonWorkingDays = getNonWorkingDays(today, weekEndStr, country);
+    const nonWorkingStr = nonWorkingDays
+      .map((d) => `- ${d.date} (${d.name})`)
+      .join("\n");
+
+    // Tasks scheduled on non-working days (need rescheduling)
+    const tasksOnNonWorking = openTasks.filter(
+      (t) => t.due && !isWorkingDay(t.due, country)
     );
 
     const taskSummary = openTasks
@@ -338,21 +359,28 @@ export function useLlm() {
 
     const projects = [...new Set(openTasks.map((t) => t.project).filter(Boolean))];
 
+    const todayIsWorking = isWorkingDay(today, country);
+
     return `## Context
-Today: ${today} (${weekday})
+Today: ${today} (${weekday})${!todayIsWorking ? " -- NON-WORKING DAY" : ""}
+Country: ${country}
 
 ## Board Summary
 Open tasks: ${openTasks.length}
 Overdue: ${overdue.length}
 Due today: ${dueToday.length}
-Due this week: ${dueThisWeek.length}
+Due next 2 weeks: ${dueThisWeek.length}
 Projects: ${projects.join(", ") || "none"}
 
+## Non-Working Days (next 2 weeks):
+${nonWorkingStr || "(none -- all days are working days)"}
+
+${tasksOnNonWorking.length > 0 ? `## WARNING: Tasks scheduled on non-working days (MUST reschedule):\n${tasksOnNonWorking.map((t) => `- "${t.title}" due:${t.due} -- RESCHEDULE to next working day`).join("\n")}\n` : ""}
 ${overdue.length > 0 ? `### Overdue Tasks:\n${overdue.map((t) => `- "${t.title}" (due:${t.due}, ${t.priority}) owner:${t.owner}`).join("\n")}\n` : ""}
 ${dueToday.length > 0 ? `### Due Today:\n${dueToday.map((t) => `- "${t.title}" (${t.priority}) owner:${t.owner}`).join("\n")}\n` : ""}
 ### All Open Tasks:
 ${taskSummary || "(no tasks yet)"}`;
-  }, [tasks]);
+  }, [tasks, config.country]);
 
   const planningChat = useCallback(
     async (

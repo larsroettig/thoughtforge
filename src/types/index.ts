@@ -68,6 +68,7 @@ export interface VaultConfig {
   auto_process: boolean;
   theme: string;
   user_name: string;
+  country: string;
   status_colors: StatusColors;
 }
 

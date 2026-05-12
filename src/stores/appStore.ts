@@ -149,6 +149,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     auto_process: true,
     theme: "dark",
     user_name: "",
+    country: "DE",
     status_colors: { ...DEFAULT_STATUS_COLORS },
   },
   setConfig: (config) => set({ config }),

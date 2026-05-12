@@ -23,6 +23,7 @@ import { useLlm } from "@/hooks/useLlm";
 import { useTheme, type Theme } from "@/hooks/useTheme";
 import { DEFAULT_STATUS_COLORS, STATUS_LABELS } from "@/types";
 import type { TaskStatus, StatusColors } from "@/types";
+import { SUPPORTED_COUNTRIES } from "@/lib/holidays";
 
 const COLOR_PRESETS = [
   "#8b949e", "#6c5ce7", "#58a6ff", "#79c0ff", "#3498db",
@@ -240,6 +241,22 @@ export function SettingsView() {
             />
             <p className="text-xs text-vault-text-muted mt-1">
               Used for "My Tasks" dashboard filter. Matches against task owners.
+            </p>
+
+            <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block mt-4">
+              Country (for public holidays)
+            </label>
+            <select
+              value={form.country || "DE"}
+              onChange={(e) => setForm((prev) => ({ ...prev, country: e.target.value }))}
+              className="input-base w-full"
+            >
+              {SUPPORTED_COUNTRIES.map((c) => (
+                <option key={c.code} value={c.code}>{c.name}</option>
+              ))}
+            </select>
+            <p className="text-xs text-vault-text-muted mt-1">
+              Used by the AI planner to skip weekends and public holidays when scheduling tasks.
             </p>
           </div>
         </section>
