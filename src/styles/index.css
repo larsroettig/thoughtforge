@@ -105,6 +105,73 @@
   }
 }
 
+/* Markdown preview styles */
+.prose-vault {
+  color: var(--vault-text);
+  font-size: 0.875rem;
+  line-height: 1.7;
+}
+
+.prose-vault h1 { font-size: 1.5rem; font-weight: 700; color: var(--vault-text-bright); margin: 1.5rem 0 0.75rem; }
+.prose-vault h2 { font-size: 1.25rem; font-weight: 600; color: var(--vault-text-bright); margin: 1.25rem 0 0.5rem; border-bottom: 1px solid var(--vault-border); padding-bottom: 0.25rem; }
+.prose-vault h3 { font-size: 1.1rem; font-weight: 600; color: var(--vault-text-bright); margin: 1rem 0 0.5rem; }
+.prose-vault h4 { font-size: 1rem; font-weight: 600; color: var(--vault-text-bright); margin: 0.75rem 0 0.25rem; }
+
+.prose-vault p { margin: 0.5rem 0; }
+
+.prose-vault ul, .prose-vault ol { margin: 0.5rem 0; padding-left: 1.5rem; }
+.prose-vault li { margin: 0.25rem 0; }
+.prose-vault ul li { list-style-type: disc; }
+.prose-vault ol li { list-style-type: decimal; }
+
+.prose-vault strong { font-weight: 700; color: var(--vault-text-bright); }
+.prose-vault em { font-style: italic; }
+
+.prose-vault code {
+  background: var(--vault-card);
+  border: 1px solid var(--vault-border);
+  border-radius: 4px;
+  padding: 0.15rem 0.4rem;
+  font-size: 0.8rem;
+  font-family: 'SF Mono', Monaco, monospace;
+}
+
+.prose-vault pre {
+  background: var(--vault-card);
+  border: 1px solid var(--vault-border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+  margin: 0.75rem 0;
+}
+
+.prose-vault pre code {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.prose-vault blockquote {
+  border-left: 3px solid var(--vault-accent);
+  padding-left: 1rem;
+  margin: 0.75rem 0;
+  color: var(--vault-text-muted);
+}
+
+.prose-vault a { color: var(--vault-accent); text-decoration: underline; }
+
+.prose-vault hr {
+  border: none;
+  border-top: 1px solid var(--vault-border);
+  margin: 1rem 0;
+}
+
+.prose-vault table { border-collapse: collapse; width: 100%; margin: 0.75rem 0; }
+.prose-vault th, .prose-vault td { border: 1px solid var(--vault-border); padding: 0.4rem 0.75rem; text-align: left; font-size: 0.8rem; }
+.prose-vault th { background: var(--vault-card); font-weight: 600; }
+
+.prose-vault img { max-width: 100%; border-radius: 8px; margin: 0.5rem 0; }
+
 /* Drag and drop styles */
 [data-rbd-draggable-context-id] {
   outline: none !important;

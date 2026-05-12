@@ -21,7 +21,11 @@ import {
   Timer,
   Archive,
   Trash2,
+  Eye,
+  PenLine,
+  ListPlus,
 } from "lucide-react";
+import { marked } from "marked";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useAppStore } from "@/stores/appStore";
 import { useVault } from "@/hooks/useVault";
@@ -60,6 +64,8 @@ export function ProjectSpaceView() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [bookHours, setBookHours] = useState("");
   const [bookDesc, setBookDesc] = useState("");
+  const [previewMode, setPreviewMode] = useState(false);
+  const [showCreateTask, setShowCreateTask] = useState(false);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const space = projectSpaces.find((s) => s.id === activeSpaceId);
@@ -139,8 +145,18 @@ export function ProjectSpaceView() {
   const handleCreateNote = useCallback(async (type: "daily" | "meeting" | "note") => {
     if (!space) return;
     const today = new Date().toISOString().split("T")[0];
-    const id = `note_${Date.now()}`;
 
+    // For daily notes, check if one already exists for today -- open it instead
+    if (type === "daily") {
+      const existing = space.notes.find((n) => n.type === "daily" && n.date === today);
+      if (existing) {
+        setEditingNote(existing);
+        setPreviewMode(false);
+        return;
+      }
+    }
+
+    const id = `note_${Date.now()}`;
     let title = "";
     if (type === "daily") title = `Daily Note - ${today}`;
     else if (type === "meeting") title = `Meeting Notes - ${today}`;
@@ -149,12 +165,37 @@ export function ProjectSpaceView() {
     const note: SpaceNote = { id, title, type, date: today, content: "", tags: [] };
     updateSpaceNote(space.id, note);
     setEditingNote(note);
+    setPreviewMode(false);
 
     setTimeout(async () => {
       const updated = useAppStore.getState().projectSpaces.find((s) => s.id === space.id);
       if (updated) await persistSpace(updated);
     }, 50);
   }, [space, updateSpaceNote, persistSpace]);
+
+  const handleDeleteNote = useCallback(async (noteId: string) => {
+    if (!space) return;
+    const updatedNotes = space.notes.filter((n) => n.id !== noteId);
+    const updatedSpace = { ...space, notes: updatedNotes };
+    setProjectSpaces(projectSpaces.map((s) => (s.id === space.id ? updatedSpace : s)));
+    if (editingNote?.id === noteId) setEditingNote(null);
+    await persistSpace(updatedSpace);
+  }, [space, projectSpaces, setProjectSpaces, persistSpace, editingNote]);
+
+  // Right-click note state
+  const [noteMenu, setNoteMenu] = useState<{ noteId: string; x: number; y: number } | null>(null);
+  const noteMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!noteMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (noteMenuRef.current && !noteMenuRef.current.contains(e.target as Node)) {
+        setNoteMenu(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [noteMenu]);
 
   const handleUploadDoc = useCallback(async () => {
     if (!space) return;
@@ -520,7 +561,12 @@ export function ProjectSpaceView() {
                 {(activeTab === "meetings" ? meetingNotes : allNotes.filter((n) => n.type !== "meeting")).map((note) => (
                   <button
                     key={note.id}
-                    onClick={() => setEditingNote(note)}
+                    onClick={() => { setEditingNote(note); setPreviewMode(false); }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setNoteMenu({ noteId: note.id, x: e.clientX, y: e.clientY });
+                    }}
                     className={`card-base w-full p-2.5 text-xs text-left ${
                       editingNote?.id === note.id ? "border-vault-accent" : ""
                     }`}
@@ -538,41 +584,167 @@ export function ProjectSpaceView() {
                   </button>
                 ))}
               </div>
+
+              {/* Note right-click context menu */}
+              {noteMenu && (
+                <div
+                  ref={noteMenuRef}
+                  className="fixed z-[100] bg-vault-surface border border-vault-border rounded-xl shadow-2xl py-1.5 w-36"
+                  style={{
+                    left: Math.min(noteMenu.x, window.innerWidth - 160),
+                    top: Math.min(noteMenu.y, window.innerHeight - 80),
+                  }}
+                >
+                  <button
+                    onClick={() => {
+                      handleDeleteNote(noteMenu.noteId);
+                      setNoteMenu(null);
+                    }}
+                    className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-vault-critical hover:bg-vault-critical/10 rounded-md"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Delete Note
+                  </button>
+                </div>
+              )}
             </div>
 
-            {/* Note Editor (auto-save) */}
+            {/* Note Editor (auto-save + markdown preview) */}
             <div className="flex-1 min-w-0 flex flex-col">
               {editingNote ? (
                 <>
-                  <div className="flex items-center gap-3 mb-2">
+                  {/* Title Row */}
+                  <div className="flex items-center gap-2 mb-2">
                     <input
                       type="text"
                       value={editingNote.title}
                       onChange={(e) => handleNoteChange({ ...editingNote, title: e.target.value })}
                       className="input-base flex-1 text-base font-semibold"
                     />
-                    <div className="flex items-center gap-2 text-[10px] text-vault-text-muted">
-                      {saveStatus === "saving" && <><Clock className="w-2.5 h-2.5 animate-spin" /> Saving...</>}
-                      {saveStatus === "saved" && <><CheckCircle2 className="w-2.5 h-2.5 text-vault-success" /> Saved</>}
-                      {saveStatus === "idle" && <span className="opacity-50">Auto-saves</span>}
+                    <div className="flex items-center gap-1">
+                      {saveStatus === "saving" && <span className="text-[10px] text-vault-text-muted flex items-center gap-1"><Clock className="w-2.5 h-2.5 animate-spin" />Saving</span>}
+                      {saveStatus === "saved" && <span className="text-[10px] text-vault-success flex items-center gap-1"><CheckCircle2 className="w-2.5 h-2.5" />Saved</span>}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 mb-2 text-xs text-vault-text-muted">
-                    <Clock className="w-3 h-3" /> {editingNote.date}
-                    <span className="tag bg-vault-card border border-vault-border">{editingNote.type}</span>
+
+                  {/* Toolbar Row */}
+                  <div className="flex items-center gap-2 mb-2">
+                    <Clock className="w-3 h-3 text-vault-text-muted" />
+                    <span className="text-xs text-vault-text-muted">{editingNote.date}</span>
+                    <span className="tag bg-vault-card border border-vault-border text-[10px]">{editingNote.type}</span>
+
+                    <div className="ml-auto flex items-center gap-1">
+                      {/* Create Task from Note */}
+                      <button
+                        onClick={() => setShowCreateTask(true)}
+                        className="flex items-center gap-1 text-[10px] text-vault-accent hover:bg-vault-accent/10 px-2 py-1 rounded"
+                        title="Create a task from this note"
+                      >
+                        <ListPlus className="w-3 h-3" />
+                        Create Task
+                      </button>
+
+                      {/* Preview/Edit Toggle */}
+                      <div className="flex bg-vault-bg rounded border border-vault-border p-0.5">
+                        <button
+                          onClick={() => setPreviewMode(false)}
+                          className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] ${
+                            !previewMode ? "bg-vault-card text-vault-accent" : "text-vault-text-muted"
+                          }`}
+                        >
+                          <PenLine className="w-2.5 h-2.5" />
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => setPreviewMode(true)}
+                          className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] ${
+                            previewMode ? "bg-vault-card text-vault-accent" : "text-vault-text-muted"
+                          }`}
+                        >
+                          <Eye className="w-2.5 h-2.5" />
+                          Preview
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <textarea
-                    value={editingNote.content}
-                    onChange={(e) => handleNoteChange({ ...editingNote, content: e.target.value })}
-                    placeholder={
-                      editingNote.type === "daily"
-                        ? "## What I worked on today\n- \n\n## Blockers\n- \n\n## Plan for tomorrow\n- "
-                        : editingNote.type === "meeting"
-                        ? "## Attendees\n- \n\n## Agenda\n- \n\n## Decisions\n- \n\n## Action Items\n- "
-                        : "Write your thoughts... (Markdown supported)\n\nAuto-saves every 3 seconds."
-                    }
-                    className="input-base flex-1 w-full resize-none font-mono text-sm leading-relaxed"
-                  />
+
+                  {/* Editor or Preview */}
+                  {previewMode ? (
+                    <div
+                      className="flex-1 overflow-y-auto bg-vault-bg rounded-lg border border-vault-border p-4 prose-vault"
+                      dangerouslySetInnerHTML={{
+                        __html: (() => {
+                          try {
+                            return marked.parse(editingNote.content || "*Empty note*") as string;
+                          } catch (err) {
+                            return `<div class="text-vault-critical text-sm"><strong>Markdown error:</strong><pre>${String(err)}</pre><hr/><pre>${editingNote.content}</pre></div>`;
+                          }
+                        })(),
+                      }}
+                    />
+                  ) : (
+                    <textarea
+                      value={editingNote.content}
+                      onChange={(e) => handleNoteChange({ ...editingNote, content: e.target.value })}
+                      placeholder={
+                        editingNote.type === "daily"
+                          ? "## What I worked on today\n- \n\n## Blockers\n- \n\n## Plan for tomorrow\n- "
+                          : editingNote.type === "meeting"
+                          ? "## Attendees\n- \n\n## Agenda\n- \n\n## Decisions\n- \n\n## Action Items\n- "
+                          : "Write your thoughts... (Markdown supported)\n\nAuto-saves every 3 seconds."
+                      }
+                      className="input-base flex-1 w-full resize-none font-mono text-sm leading-relaxed"
+                    />
+                  )}
+
+                  {/* Create Task from Note Modal */}
+                  {showCreateTask && (
+                    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={() => setShowCreateTask(false)}>
+                      <div className="bg-vault-surface border border-vault-border rounded-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+                        <h3 className="text-sm font-bold text-vault-text-bright mb-3 flex items-center gap-2">
+                          <ListPlus className="w-4 h-4 text-vault-accent" />
+                          Create Task from Note
+                        </h3>
+                        <p className="text-xs text-vault-text-muted mb-4">
+                          This will open the task editor pre-filled with info from "{editingNote.title}".
+                        </p>
+                        <div className="flex gap-2 justify-end">
+                          <button onClick={() => setShowCreateTask(false)} className="btn-ghost text-xs">Cancel</button>
+                          <button
+                            onClick={() => {
+                              setShowCreateTask(false);
+                              // Create a task pre-filled from the note
+                              setEditingTask({
+                                id: "",
+                                title: editingNote.title.replace(/^(Daily Note|Meeting Notes) - .*$/, "").trim() || editingNote.title,
+                                status: "todo",
+                                priority: "medium",
+                                urgency: "ongoing",
+                                project: space?.id || "general",
+                                owner: config.user_name || "",
+                                collaborators: [],
+                                source: `note:${editingNote.id}`,
+                                source_quote: editingNote.content.slice(0, 200),
+                                created: new Date().toISOString().split("T")[0],
+                                due: "",
+                                estimated_hours: 0,
+                                actual_hours: 0,
+                                blocked_by: [],
+                                subtasks: [],
+                                notes: `From note: ${editingNote.title}\n\n${editingNote.content.slice(0, 500)}`,
+                                archived: false,
+                                time_only: false,
+                              } as Task);
+                            }}
+                            className="btn-primary text-xs flex items-center gap-1.5"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            Create Task
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </>
               ) : (
                 <div className="flex items-center justify-center h-full text-vault-text-muted text-sm">
