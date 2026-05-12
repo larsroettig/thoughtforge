@@ -154,6 +154,10 @@ npm test
 cd src-tauri && cargo test
 ```
 
+## Author
+
+Built by **Lars Roettig** in 2025.
+
 ## License
 
 MIT

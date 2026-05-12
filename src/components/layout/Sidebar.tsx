@@ -5,7 +5,6 @@ import {
   MessageSquare,
   FileText,
   Settings,
-  Brain,
   Archive,
   FolderTree,
   ChevronRight,
@@ -105,7 +104,7 @@ export function Sidebar() {
       {/* App Title */}
       <div className="px-4 pt-4 pb-3 border-b border-vault-border">
         <div className="flex items-center gap-2">
-          <Brain className="w-5 h-5 text-vault-purple" />
+          <img src="/thoughtforge.png" alt="ThoughtForge" className="w-6 h-6 rounded" />
           <h1 className="text-base font-bold text-vault-text-bright">ThoughtForge</h1>
         </div>
       </div>

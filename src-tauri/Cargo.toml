@@ -2,7 +2,7 @@
 name = "thoughtforge"
 version = "0.1.0"
 description = "ThoughtForge - Local-First AI Planning Assistant"
-authors = ["ThoughtForge Contributors"]
+authors = ["Lars Roettig"]
 edition = "2021"
 
 [lib]
