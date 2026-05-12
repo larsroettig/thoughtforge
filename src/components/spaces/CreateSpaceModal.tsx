@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { X, Plus } from "lucide-react";
 import { useAppStore } from "@/stores/appStore";
+import { useVault } from "@/hooks/useVault";
 import type { ProjectSpace } from "@/types";
 
 interface Props {
@@ -14,11 +15,12 @@ const COLORS = [
 
 export function CreateSpaceModal({ onClose }: Props) {
   const { addProjectSpace, setActiveSpaceId, setView } = useAppStore();
+  const { saveSpace } = useVault();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [color, setColor] = useState(COLORS[0]);
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!name.trim()) return;
     const id = name.trim().toLowerCase().replace(/\s+/g, "-");
     const space: ProjectSpace = {
@@ -31,6 +33,7 @@ export function CreateSpaceModal({ onClose }: Props) {
       notes: [],
     };
     addProjectSpace(space);
+    await saveSpace(space);
     setActiveSpaceId(id);
     setView("project-space");
     onClose();

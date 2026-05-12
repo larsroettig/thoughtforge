@@ -17,8 +17,8 @@ import {
   Ban,
   ArrowRight,
 } from "lucide-react";
-import type { Task, TaskStatus } from "@/types";
-import { PROJECT_COLORS, STATUS_LABELS } from "@/types";
+import type { Task, TaskStatus, StatusColors } from "@/types";
+import { PROJECT_COLORS, STATUS_LABELS, DEFAULT_STATUS_COLORS } from "@/types";
 import { useAppStore } from "@/stores/appStore";
 import { useVault } from "@/hooks/useVault";
 import { OwnerSelect } from "./OwnerSelect";
@@ -137,6 +137,8 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
   }, []);
 
   const projectColor = PROJECT_COLORS[task.project] || PROJECT_COLORS.default;
+  const sc: StatusColors = { ...DEFAULT_STATUS_COLORS, ...(useAppStore.getState().config.status_colors || {}) };
+  const statusColor = sc[task.status] || sc.todo;
 
   return (
     <>
@@ -149,6 +151,7 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
         className={`card-base cursor-grab active:cursor-grabbing group relative ${
           isTimerRunning ? "ring-1 ring-vault-success/50 border-vault-success/30" : ""
         }`}
+        style={{ borderLeftWidth: "3px", borderLeftColor: statusColor }}
       >
         {/* Timer indicator */}
         {isTimerRunning && (

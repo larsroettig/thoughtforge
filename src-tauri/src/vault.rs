@@ -113,6 +113,7 @@ pub fn init_vault() -> Result<String, String> {
         "uploads/documents",
         "chats",
         "templates",
+        "spaces",
     ];
 
     for dir in &dirs {
@@ -443,6 +444,70 @@ pub fn list_uploads() -> Result<Vec<String>, String> {
 pub fn read_file_content(path: String) -> Result<String, String> {
     fs::read_to_string(&path)
         .map_err(|e| format!("Failed to read file {}: {}", path, e))
+}
+
+// ── Project Spaces ──────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn read_spaces() -> Result<Vec<serde_json::Value>, String> {
+    let spaces_dir = vault_dir().join("spaces");
+    if !spaces_dir.exists() {
+        return Ok(vec![]);
+    }
+
+    let mut spaces = Vec::new();
+    let entries = fs::read_dir(&spaces_dir)
+        .map_err(|e| format!("Failed to read spaces dir: {}", e))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+
+        let content = fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+
+        match serde_json::from_str::<serde_json::Value>(&content) {
+            Ok(val) => spaces.push(val),
+            Err(e) => eprintln!("Failed to parse {}: {}", path.display(), e),
+        }
+    }
+
+    Ok(spaces)
+}
+
+#[tauri::command]
+pub fn write_space(space: serde_json::Value) -> Result<(), String> {
+    let spaces_dir = vault_dir().join("spaces");
+    fs::create_dir_all(&spaces_dir)
+        .map_err(|e| format!("Failed to create spaces dir: {}", e))?;
+
+    let id = space.get("id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "Space must have an id".to_string())?;
+
+    let filename = format!("{}.json", id);
+    let path = spaces_dir.join(&filename);
+
+    let content = serde_json::to_string_pretty(&space)
+        .map_err(|e| format!("Failed to serialize space: {}", e))?;
+
+    fs::write(&path, content)
+        .map_err(|e| format!("Failed to write space: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_space(id: String) -> Result<(), String> {
+    let path = vault_dir().join("spaces").join(format!("{}.json", id));
+    if path.exists() {
+        fs::remove_file(&path)
+            .map_err(|e| format!("Failed to delete space: {}", e))?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

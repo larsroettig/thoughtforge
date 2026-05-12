@@ -11,11 +11,12 @@ import { SettingsView } from "@/components/settings/SettingsView";
 import { ExtractionModal } from "@/components/documents/ExtractionModal";
 import { useAppStore } from "@/stores/appStore";
 import { useVault } from "@/hooks/useVault";
+import type { ProjectSpace } from "@/types";
 import { useLlm } from "@/hooks/useLlm";
 
 function App() {
   const { currentView, extractionPreview } = useAppStore();
-  const { initVault, loadTasks, loadConfig, startWatching } = useVault();
+  const { initVault, loadTasks, loadConfig, startWatching, loadSpaces, saveSpace } = useVault();
   const { checkConnection } = useLlm();
 
   useEffect(() => {
@@ -24,7 +25,23 @@ function App() {
         await initVault();
         const config = await loadConfig();
         await loadTasks();
+        const spaces = await loadSpaces();
         await checkConnection();
+
+        // Create "General" space if it doesn't exist
+        if (!spaces.find((s: { id: string }) => s.id === "general")) {
+          const generalSpace = {
+            id: "general",
+            name: "General",
+            description: "Daily notes, fleeting thoughts, and personal tasks",
+            color: "#6c5ce7",
+            created: new Date().toISOString().split("T")[0],
+            documents: [],
+            notes: [],
+          };
+          useAppStore.getState().addProjectSpace(generalSpace);
+          await saveSpace(generalSpace);
+        }
 
         if (config && config.watched_folders.length > 0) {
           await startWatching(config.watched_folders);

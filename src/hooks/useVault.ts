@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "@/stores/appStore";
-import type { Task, VaultConfig } from "@/types";
+import type { Task, VaultConfig, ProjectSpace } from "@/types";
 
 export function useVault() {
   const {
@@ -11,6 +11,7 @@ export function useVault() {
     addTask,
     updateTask,
     removeTask,
+    setProjectSpaces,
   } = useAppStore();
 
   const initVault = useCallback(async () => {
@@ -40,7 +41,6 @@ export function useVault() {
     async (task: Task) => {
       try {
         await invoke("write_task", { task });
-        // Update local state
         const existing = useAppStore.getState().tasks.find((t) => t.id === task.id);
         if (existing) {
           updateTask(task.id, task);
@@ -104,6 +104,44 @@ export function useVault() {
     }
   }, []);
 
+  // ── Project Spaces ──────────────────────────────────────────────────
+
+  const loadSpaces = useCallback(async () => {
+    try {
+      const raw = await invoke<ProjectSpace[]>("read_spaces");
+      // Ensure defaults for missing fields
+      const spaces = raw.map((s) => ({
+        ...s,
+        documents: s.documents || [],
+        notes: s.notes || [],
+      }));
+      setProjectSpaces(spaces);
+      return spaces;
+    } catch (err) {
+      console.error("Failed to load spaces:", err);
+      return [];
+    }
+  }, [setProjectSpaces]);
+
+  const saveSpace = useCallback(async (space: ProjectSpace) => {
+    try {
+      await invoke("write_space", { space });
+    } catch (err) {
+      console.error("Failed to save space:", err);
+      throw err;
+    }
+  }, []);
+
+  const deleteSpace = useCallback(async (id: string) => {
+    try {
+      await invoke("delete_space", { id });
+      const current = useAppStore.getState().projectSpaces;
+      setProjectSpaces(current.filter((s) => s.id !== id));
+    } catch (err) {
+      console.error("Failed to delete space:", err);
+    }
+  }, [setProjectSpaces]);
+
   return {
     initVault,
     loadTasks,
@@ -113,5 +151,8 @@ export function useVault() {
     saveConfig,
     readFileContent,
     startWatching,
+    loadSpaces,
+    saveSpace,
+    deleteSpace,
   };
 }

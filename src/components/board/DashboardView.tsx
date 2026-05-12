@@ -16,8 +16,8 @@ import {
 import { useAppStore } from "@/stores/appStore";
 import { TaskCard } from "./TaskCard";
 import { TaskModal } from "./TaskModal";
-import type { Task } from "@/types";
-import { PROJECT_COLORS } from "@/types";
+import type { Task, StatusColors } from "@/types";
+import { PROJECT_COLORS, DEFAULT_STATUS_COLORS } from "@/types";
 
 type FilterId =
   | "my_todo"
@@ -39,18 +39,20 @@ interface SmartFilter {
   description: string;
 }
 
-const SMART_FILTERS: SmartFilter[] = [
-  { id: "my_todo", label: "My To Do", icon: Inbox, color: "#6c5ce7", description: "Tasks assigned to you that need action" },
-  { id: "overdue", label: "Overdue", icon: AlertTriangle, color: "#e74c3c", description: "Past their due date" },
-  { id: "due_today", label: "Due Today", icon: CalendarCheck, color: "#e67e22", description: "Due today" },
-  { id: "due_this_week", label: "Due This Week", icon: CalendarDays, color: "#f39c12", description: "Due within 7 days" },
-  { id: "in_progress", label: "In Progress", icon: Timer, color: "#3498db", description: "Currently being worked on" },
-  { id: "blocked", label: "Blocked", icon: Ban, color: "#e74c3c", description: "Blocked tasks needing attention" },
-  { id: "unassigned", label: "Unassigned", icon: User, color: "#8b949e", description: "No owner assigned" },
-  { id: "no_date", label: "No Due Date", icon: Clock, color: "#8b949e", description: "Missing a deadline" },
-  { id: "recently_done", label: "Recently Done", icon: CheckCircle2, color: "#27ae60", description: "Completed in the last 7 days" },
-  { id: "all_open", label: "All Open", icon: ListChecks, color: "#6c5ce7", description: "Every non-done, non-archived task" },
-];
+function buildSmartFilters(sc: StatusColors): SmartFilter[] {
+  return [
+    { id: "my_todo", label: "My To Do", icon: Inbox, color: sc.todo, description: "Tasks assigned to you that need action" },
+    { id: "overdue", label: "Overdue", icon: AlertTriangle, color: sc.blocked, description: "Past their due date" },
+    { id: "due_today", label: "Due Today", icon: CalendarCheck, color: sc.in_progress, description: "Due today" },
+    { id: "due_this_week", label: "Due This Week", icon: CalendarDays, color: sc.review, description: "Due within 7 days" },
+    { id: "in_progress", label: "In Progress", icon: Timer, color: sc.in_progress, description: "Currently being worked on" },
+    { id: "blocked", label: "Blocked", icon: Ban, color: sc.blocked, description: "Blocked tasks needing attention" },
+    { id: "unassigned", label: "Unassigned", icon: User, color: "#8b949e", description: "No owner assigned" },
+    { id: "no_date", label: "No Due Date", icon: Clock, color: "#8b949e", description: "Missing a deadline" },
+    { id: "recently_done", label: "Recently Done", icon: CheckCircle2, color: sc.done, description: "Completed in the last 7 days" },
+    { id: "all_open", label: "All Open", icon: ListChecks, color: sc.todo, description: "Every non-done, non-archived task" },
+  ];
+}
 
 function getToday(): string {
   return new Date().toISOString().split("T")[0];
@@ -71,6 +73,8 @@ function getWeekAgo(): string {
 export function DashboardView() {
   const { tasks, config } = useAppStore();
   const userName = config.user_name?.toLowerCase() || "";
+  const statusColors: StatusColors = { ...DEFAULT_STATUS_COLORS, ...(config.status_colors || {}) };
+  const smartFilters = useMemo(() => buildSmartFilters(statusColors), [statusColors]);
   const [activeFilter, setActiveFilter] = useState<FilterId>("my_todo");
   const [editingTask, setEditingTask] = useState<Task | null>(null);
 
@@ -221,7 +225,7 @@ export function DashboardView() {
     [activeTasks]
   );
 
-  const activeFilterMeta = SMART_FILTERS.find((f) => f.id === activeFilter)!;
+  const activeFilterMeta = smartFilters.find((f) => f.id === activeFilter)!;
 
   return (
     <div className="h-full flex flex-col">
@@ -240,7 +244,7 @@ export function DashboardView() {
             Smart Filters
           </p>
           <div className="space-y-0.5">
-            {SMART_FILTERS.map((filter) => {
+            {smartFilters.map((filter) => {
               const Icon = filter.icon;
               const count = filterCounts[filter.id];
               const isActive = activeFilter === filter.id;
