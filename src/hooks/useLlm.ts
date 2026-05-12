@@ -71,20 +71,27 @@ CRITICAL RULES FOR SCHEDULING:
 - The context includes a list of non-working days for the current period
 - If a task is currently due on a non-working day, move it to the next working day
 - Saturday and Sunday are ALWAYS non-working days
+- MAXIMUM 3-5 tasks per day. If a day has too many, move lower-priority tasks to the next day or clear their due date
+- The context shows "Workload per day" -- respect the capacity limits
+- To REMOVE a due date (unschedule a task), use: [[ACTION: set_due | task_title | ]]  (empty value clears the date)
 
 When the user asks to plan their day (/plan-day):
 1. Check if today is a working day. If not, say so and plan for the next working day instead
 2. Look at overdue, due-today, and high-priority tasks
-3. Pick 3-5 tasks for today (or next working day)
-4. Set their due dates using [[ACTION: set_due | ... | YYYY-MM-DD]]
-5. Present the plan clearly
+3. Pick ONLY 3-5 tasks for today (or next working day) -- do not overload
+4. If today already has more than 5 tasks, move lower-priority ones to tomorrow or clear their dates
+5. Set their due dates using [[ACTION: set_due | ... | YYYY-MM-DD]]
+6. For tasks that are too much: [[ACTION: set_due | task_title | ]]  to clear the date
+7. Present the plan clearly, explain what was deferred and why
 
 When the user asks to plan their week (/plan-week):
 1. Look at all open tasks, deadlines, priorities
 2. Distribute tasks across WORKING DAYS ONLY (skip weekends and holidays listed in context)
-3. Set due dates using [[ACTION: set_due | ... | YYYY-MM-DD]] for each
-4. Present the day-by-day plan with only working days
-5. If a task is currently on a non-working day, reschedule it
+3. MAX 3-5 tasks per day -- if there are more tasks than available slots, defer lower-priority tasks (clear their due dates)
+4. Set due dates using [[ACTION: set_due | ... | YYYY-MM-DD]] for each scheduled task
+5. For deferred tasks: [[ACTION: set_due | task_title | ]]  to clear overloaded dates
+6. Present the day-by-day plan with only working days
+7. List deferred tasks separately at the end as "Backlog (unscheduled)"
 
 IMPORTANT:
 - Always include [[ACTION:...]] blocks when modifying or creating tasks
@@ -92,7 +99,8 @@ IMPORTANT:
 - You can include multiple actions in one response
 - Always confirm what you changed in your text response
 - If you can't find a matching task, say so instead of guessing
-- For create_task: the task is created as "todo" status with urgency "ongoing" and due date empty`;
+- For create_task: the task is created as "todo" status with urgency "ongoing" and due date empty
+- To clear a due date, set value to empty string: [[ACTION: set_due | task_title | ]]`;
 
 export interface TaskAction {
   type: "set_due" | "set_priority" | "set_status" | "set_owner" | "archive" | "create_task";
@@ -350,6 +358,32 @@ export function useLlm() {
       (t) => t.due && !isWorkingDay(t.due, country)
     );
 
+    // Build workload per day for the next 2 weeks
+    const workloadByDay: Record<string, { count: number; hours: number; tasks: string[] }> = {};
+    for (const t of openTasks) {
+      if (t.due) {
+        if (!workloadByDay[t.due]) workloadByDay[t.due] = { count: 0, hours: 0, tasks: [] };
+        workloadByDay[t.due].count++;
+        workloadByDay[t.due].hours += t.estimated_hours || 1;
+        workloadByDay[t.due].tasks.push(t.title);
+      }
+    }
+
+    const overloadedDays = Object.entries(workloadByDay)
+      .filter(([, w]) => w.count > 5)
+      .map(([date, w]) => `- ${date}: ${w.count} tasks, ~${w.hours.toFixed(1)}h (OVERLOADED -- max 5)`)
+      .join("\n");
+
+    const workloadStr = Object.entries(workloadByDay)
+      .filter(([date]) => date >= today)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(0, 14)
+      .map(([date, w]) => {
+        const isWorking = isWorkingDay(date, country);
+        return `- ${date}: ${w.count} tasks, ~${w.hours.toFixed(1)}h${!isWorking ? " (NON-WORKING DAY!)" : ""}${w.count > 5 ? " OVERLOADED" : ""}`;
+      })
+      .join("\n");
+
     const taskSummary = openTasks
       .map(
         (t) =>
@@ -358,7 +392,7 @@ export function useLlm() {
       .join("\n");
 
     const projects = [...new Set(openTasks.map((t) => t.project).filter(Boolean))];
-
+    const unscheduled = openTasks.filter((t) => !t.due).length;
     const todayIsWorking = isWorkingDay(today, country);
 
     return `## Context
@@ -366,16 +400,19 @@ Today: ${today} (${weekday})${!todayIsWorking ? " -- NON-WORKING DAY" : ""}
 Country: ${country}
 
 ## Board Summary
-Open tasks: ${openTasks.length}
+Open tasks: ${openTasks.length} (${unscheduled} unscheduled)
 Overdue: ${overdue.length}
 Due today: ${dueToday.length}
 Due next 2 weeks: ${dueThisWeek.length}
 Projects: ${projects.join(", ") || "none"}
 
+## Workload per day (next 2 weeks):
+${workloadStr || "(no tasks scheduled)"}
+${overloadedDays ? `\n## WARNING: Overloaded days (more than 5 tasks):\n${overloadedDays}\nRemove due dates from lower-priority tasks on these days!\n` : ""}
 ## Non-Working Days (next 2 weeks):
 ${nonWorkingStr || "(none -- all days are working days)"}
 
-${tasksOnNonWorking.length > 0 ? `## WARNING: Tasks scheduled on non-working days (MUST reschedule):\n${tasksOnNonWorking.map((t) => `- "${t.title}" due:${t.due} -- RESCHEDULE to next working day`).join("\n")}\n` : ""}
+${tasksOnNonWorking.length > 0 ? `## WARNING: Tasks on non-working days (MUST reschedule):\n${tasksOnNonWorking.map((t) => `- "${t.title}" due:${t.due} -- RESCHEDULE to next working day`).join("\n")}\n` : ""}
 ${overdue.length > 0 ? `### Overdue Tasks:\n${overdue.map((t) => `- "${t.title}" (due:${t.due}, ${t.priority}) owner:${t.owner}`).join("\n")}\n` : ""}
 ${dueToday.length > 0 ? `### Due Today:\n${dueToday.map((t) => `- "${t.title}" (${t.priority}) owner:${t.owner}`).join("\n")}\n` : ""}
 ### All Open Tasks:
