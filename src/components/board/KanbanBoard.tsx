@@ -3,6 +3,7 @@ import {
   Clock,
   ListChecks,
   CalendarDays,
+  CalendarRange,
   Filter,
   Plus,
   Import,
@@ -12,6 +13,7 @@ import { useAppStore } from "@/stores/appStore";
 import { useVault } from "@/hooks/useVault";
 import { BoardColumn } from "./BoardColumn";
 import { DayView } from "./DayView";
+import { CalendarView } from "./CalendarView";
 import { TaskModal } from "./TaskModal";
 import { ImportModal } from "./ImportModal";
 import { URGENCY_COLUMNS, getStatusColumns, PROJECT_COLORS } from "@/types";
@@ -21,6 +23,7 @@ const VIEW_OPTIONS: { id: BoardView; label: string; icon: typeof Clock }[] = [
   { id: "time", label: "Time", icon: Clock },
   { id: "status", label: "Status", icon: ListChecks },
   { id: "day", label: "Day", icon: CalendarDays },
+  { id: "calendar", label: "Calendar", icon: CalendarRange },
 ];
 
 export function KanbanBoard() {
@@ -96,7 +99,7 @@ export function KanbanBoard() {
 
   // Organize tasks into columns (for time/status views)
   const columns = useMemo(() => {
-    if (boardView === "day") return [];
+    if (boardView === "day" || boardView === "calendar") return [];
     const template = boardView === "time" ? URGENCY_COLUMNS : getStatusColumns(config.status_colors);
     return template.map((col) => ({
       ...col,
@@ -289,7 +292,13 @@ export function KanbanBoard() {
 
       {/* Board Content */}
       <div className="flex-1 overflow-auto p-6">
-        {boardView === "day" ? (
+        {boardView === "calendar" ? (
+          <CalendarView
+            tasks={filteredTasks}
+            onTaskClick={setEditingTask}
+            onDrop={handleDrop}
+          />
+        ) : boardView === "day" ? (
           <DayView
             tasks={filteredTasks}
             onTaskClick={setEditingTask}

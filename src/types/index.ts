@@ -29,7 +29,7 @@ export type TaskUrgency =
   | "next_2weeks"
   | "ongoing";
 
-export type BoardView = "time" | "status" | "day";
+export type BoardView = "time" | "status" | "day" | "calendar";
 
 export interface BoardColumn {
   id: string;
