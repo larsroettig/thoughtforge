@@ -188,8 +188,8 @@ export function Sidebar() {
 
         {projectsOpen && (
           <div className="space-y-0.5 pb-2">
-            {/* Project Spaces (clickable into full workspace) */}
-            {projectSpaces.map((space) => {
+            {/* Project Spaces (clickable into full workspace) -- hide archived */}
+            {projectSpaces.filter((s) => !s.archived).map((space) => {
               const isActive = currentView === "project-space" && activeSpaceId === space.id;
               const taskCount = activeTasks.filter((t) => t.project === space.id && t.status !== "done").length;
               return (

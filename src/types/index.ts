@@ -107,14 +107,23 @@ export interface ActiveTimer {
 }
 
 // Project Space types
+export interface TimeEntry {
+  id: string;
+  date: string;
+  hours: number;
+  description: string;
+}
+
 export interface ProjectSpace {
   id: string;
   name: string;
   description: string;
   color: string;
   created: string;
+  archived: boolean;
   documents: SpaceDocument[];
   notes: SpaceNote[];
+  timeEntries: TimeEntry[];
 }
 
 export interface SpaceDocument {

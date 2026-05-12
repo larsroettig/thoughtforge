@@ -18,11 +18,13 @@ import {
   Ban,
   CheckCircle2,
   Timer,
+  Archive,
+  Trash2,
 } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useAppStore } from "@/stores/appStore";
 import { useVault } from "@/hooks/useVault";
-import type { ProjectSpaceTab, SpaceNote, Task, StatusColors } from "@/types";
+import type { ProjectSpaceTab, SpaceNote, Task, StatusColors, TimeEntry } from "@/types";
 import { PROJECT_COLORS, DEFAULT_STATUS_COLORS } from "@/types";
 import { TaskCard } from "@/components/board/TaskCard";
 import { TaskModal } from "@/components/board/TaskModal";
@@ -44,15 +46,19 @@ export function ProjectSpaceView() {
     setView,
     tasks,
     updateSpaceNote,
+    setProjectSpaces,
     config,
   } = useAppStore();
-  const { saveSpace: persistSpace } = useVault();
+  const { saveSpace: persistSpace, deleteSpace } = useVault();
 
   const [activeTab, setActiveTab] = useState<ProjectSpaceTab>("overview");
   const [editingNote, setEditingNote] = useState<SpaceNote | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [newNoteType, setNewNoteType] = useState<"daily" | "meeting" | "note">("daily");
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "idle">("idle");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [bookHours, setBookHours] = useState("");
+  const [bookDesc, setBookDesc] = useState("");
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const space = projectSpaces.find((s) => s.id === activeSpaceId);
@@ -160,6 +166,42 @@ export function ProjectSpaceView() {
     }
   }, [space]);
 
+  const handleArchiveSpace = useCallback(async () => {
+    if (!space) return;
+    const updated = { ...space, archived: true };
+    setProjectSpaces(projectSpaces.map((s) => (s.id === space.id ? updated : s)));
+    await persistSpace(updated);
+    setActiveSpaceId(null);
+    setView("dashboard");
+  }, [space, projectSpaces, setProjectSpaces, persistSpace, setActiveSpaceId, setView]);
+
+  const handleDeleteSpace = useCallback(async () => {
+    if (!space) return;
+    await deleteSpace(space.id);
+    setActiveSpaceId(null);
+    setView("dashboard");
+  }, [space, deleteSpace, setActiveSpaceId, setView]);
+
+  const handleBookHours = useCallback(async () => {
+    if (!space || !bookHours) return;
+    const entry: TimeEntry = {
+      id: `time_${Date.now()}`,
+      date: new Date().toISOString().split("T")[0],
+      hours: parseFloat(bookHours) || 0,
+      description: bookDesc,
+    };
+    const updated = { ...space, timeEntries: [...(space.timeEntries || []), entry] };
+    setProjectSpaces(projectSpaces.map((s) => (s.id === space.id ? updated : s)));
+    await persistSpace(updated);
+    setBookHours("");
+    setBookDesc("");
+  }, [space, bookHours, bookDesc, projectSpaces, setProjectSpaces, persistSpace]);
+
+  const totalBookedHours = useMemo(
+    () => (space?.timeEntries || []).reduce((s, e) => s + e.hours, 0),
+    [space]
+  );
+
   const handleBack = () => {
     // Flush any pending auto-save
     if (autoSaveTimer.current) {
@@ -191,20 +233,60 @@ export function ProjectSpaceView() {
           <div className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
           <h2 className="text-lg font-bold text-vault-text-bright">{space.name}</h2>
           <span className="text-xs text-vault-text-muted">
-            {openTasks.length} open / {totalHours.toFixed(1)}h tracked
+            {openTasks.length} open / {totalBookedHours.toFixed(1)}h booked / {totalHours.toFixed(1)}h task-tracked
           </span>
-          {/* Auto-save indicator */}
-          {saveStatus === "saving" && (
-            <span className="text-[10px] text-vault-text-muted ml-auto flex items-center gap-1">
-              <Clock className="w-2.5 h-2.5 animate-spin" /> Saving...
-            </span>
-          )}
-          {saveStatus === "saved" && (
-            <span className="text-[10px] text-vault-success ml-auto flex items-center gap-1">
-              <CheckCircle2 className="w-2.5 h-2.5" /> Saved
-            </span>
-          )}
+
+          {/* Spacer + actions */}
+          <div className="ml-auto flex items-center gap-2">
+            {/* Auto-save indicator */}
+            {saveStatus === "saving" && (
+              <span className="text-[10px] text-vault-text-muted flex items-center gap-1">
+                <Clock className="w-2.5 h-2.5 animate-spin" /> Saving...
+              </span>
+            )}
+            {saveStatus === "saved" && (
+              <span className="text-[10px] text-vault-success flex items-center gap-1">
+                <CheckCircle2 className="w-2.5 h-2.5" /> Saved
+              </span>
+            )}
+
+            {space.id !== "general" && (
+              <>
+                <button
+                  onClick={handleArchiveSpace}
+                  className="btn-ghost p-1.5 text-vault-text-muted hover:text-vault-warning"
+                  title="Archive this space"
+                >
+                  <Archive className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="btn-ghost p-1.5 text-vault-text-muted hover:text-vault-critical"
+                  title="Delete this space"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </>
+            )}
+          </div>
         </div>
+
+        {/* Delete confirmation */}
+        {showDeleteConfirm && (
+          <div className="mb-2 p-3 bg-vault-critical/10 border border-vault-critical/20 rounded-lg flex items-center gap-3">
+            <AlertTriangle className="w-4 h-4 text-vault-critical flex-shrink-0" />
+            <p className="text-xs text-vault-text flex-1">
+              Delete "{space.name}"? This removes the space and all notes permanently.
+            </p>
+            <button onClick={handleDeleteSpace} className="text-xs text-vault-critical font-medium hover:underline">
+              Delete
+            </button>
+            <button onClick={() => setShowDeleteConfirm(false)} className="text-xs text-vault-text-muted hover:underline">
+              Cancel
+            </button>
+          </div>
+        )}
+
         <div className="flex gap-1">
           {TABS.map((tab) => {
             const Icon = tab.icon;
@@ -253,9 +335,53 @@ export function ProjectSpaceView() {
                 <p className="text-[10px] text-vault-text-muted">Blocked</p>
               </div>
               <div className="card-base p-3 text-center">
-                <p className="text-2xl font-bold text-vault-text-bright">{totalHours.toFixed(1)}h</p>
-                <p className="text-[10px] text-vault-text-muted">Tracked</p>
+                <p className="text-2xl font-bold text-vault-accent">{totalBookedHours.toFixed(1)}h</p>
+                <p className="text-[10px] text-vault-text-muted">Booked</p>
               </div>
+            </div>
+
+            {/* Hour Booking */}
+            <div className="card-base p-4">
+              <h3 className="text-xs font-semibold text-vault-text-muted uppercase tracking-wide mb-3 flex items-center gap-1.5">
+                <Clock className="w-3 h-3" /> Book Hours
+              </h3>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.25"
+                  value={bookHours}
+                  onChange={(e) => setBookHours(e.target.value)}
+                  placeholder="Hours"
+                  className="input-base w-20 text-sm"
+                />
+                <input
+                  type="text"
+                  value={bookDesc}
+                  onChange={(e) => setBookDesc(e.target.value)}
+                  placeholder="What did you work on?"
+                  className="input-base flex-1 text-sm"
+                  onKeyDown={(e) => { if (e.key === "Enter") handleBookHours(); }}
+                />
+                <button
+                  onClick={handleBookHours}
+                  disabled={!bookHours}
+                  className="btn-primary text-xs px-3 disabled:opacity-50"
+                >
+                  Log
+                </button>
+              </div>
+              {(space.timeEntries || []).length > 0 && (
+                <div className="mt-3 space-y-1 max-h-32 overflow-y-auto">
+                  {[...(space.timeEntries || [])].reverse().slice(0, 5).map((e) => (
+                    <div key={e.id} className="flex items-center gap-2 text-[10px] text-vault-text-muted">
+                      <span className="text-vault-text font-medium">{e.hours}h</span>
+                      <span className="truncate flex-1">{e.description || "No description"}</span>
+                      <span>{e.date}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Overdue alert */}

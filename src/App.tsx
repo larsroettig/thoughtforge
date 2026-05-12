@@ -29,18 +29,43 @@ function App() {
         await checkConnection();
 
         // Create "General" space if it doesn't exist
-        if (!spaces.find((s: { id: string }) => s.id === "general")) {
-          const generalSpace = {
+        const spaceIds = new Set(spaces.map((s: { id: string }) => s.id));
+        if (!spaceIds.has("general")) {
+          const generalSpace: ProjectSpace = {
             id: "general",
             name: "General",
             description: "Daily notes, fleeting thoughts, and personal tasks",
             color: "#6c5ce7",
             created: new Date().toISOString().split("T")[0],
+            archived: false,
             documents: [],
             notes: [],
+            timeEntries: [],
           };
           useAppStore.getState().addProjectSpace(generalSpace);
           await saveSpace(generalSpace);
+          spaceIds.add("general");
+        }
+
+        // Auto-create spaces from existing task projects
+        const currentTasks = useAppStore.getState().tasks;
+        const projectNames = [...new Set(currentTasks.map((t) => t.project).filter(Boolean))];
+        for (const projId of projectNames) {
+          if (spaceIds.has(projId)) continue;
+          const newSpace: ProjectSpace = {
+            id: projId,
+            name: projId.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+            description: "",
+            color: "",
+            created: new Date().toISOString().split("T")[0],
+            archived: false,
+            documents: [],
+            notes: [],
+            timeEntries: [],
+          };
+          useAppStore.getState().addProjectSpace(newSpace);
+          await saveSpace(newSpace);
+          spaceIds.add(projId);
         }
 
         if (config && config.watched_folders.length > 0) {

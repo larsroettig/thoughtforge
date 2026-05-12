@@ -112,8 +112,10 @@ export function useVault() {
       // Ensure defaults for missing fields
       const spaces = raw.map((s) => ({
         ...s,
+        archived: s.archived || false,
         documents: s.documents || [],
         notes: s.notes || [],
+        timeEntries: s.timeEntries || [],
       }));
       setProjectSpaces(spaces);
       return spaces;
