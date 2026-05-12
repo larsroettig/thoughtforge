@@ -14,7 +14,7 @@ import { BoardColumn } from "./BoardColumn";
 import { DayView } from "./DayView";
 import { TaskModal } from "./TaskModal";
 import { ImportModal } from "./ImportModal";
-import { URGENCY_COLUMNS, STATUS_COLUMNS, PROJECT_COLORS } from "@/types";
+import { URGENCY_COLUMNS, getStatusColumns, PROJECT_COLORS } from "@/types";
 import type { Task, BoardView } from "@/types";
 
 const VIEW_OPTIONS: { id: BoardView; label: string; icon: typeof Clock }[] = [
@@ -32,6 +32,7 @@ export function KanbanBoard() {
     setProjectFilter,
     ownerFilter,
     setOwnerFilter,
+    config,
   } = useAppStore();
 
   const { saveTask } = useVault();
@@ -96,7 +97,7 @@ export function KanbanBoard() {
   // Organize tasks into columns (for time/status views)
   const columns = useMemo(() => {
     if (boardView === "day") return [];
-    const template = boardView === "time" ? URGENCY_COLUMNS : STATUS_COLUMNS;
+    const template = boardView === "time" ? URGENCY_COLUMNS : getStatusColumns(config.status_colors);
     return template.map((col) => ({
       ...col,
       tasks: filteredTasks.filter((t) => {

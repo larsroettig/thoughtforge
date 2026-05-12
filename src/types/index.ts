@@ -43,6 +43,22 @@ export interface Project {
   content: string;
 }
 
+export interface StatusColors {
+  todo: string;
+  in_progress: string;
+  review: string;
+  done: string;
+  blocked: string;
+}
+
+export const DEFAULT_STATUS_COLORS: StatusColors = {
+  todo: "#8b949e",
+  in_progress: "#d29922",
+  review: "#58a6ff",
+  done: "#3fb950",
+  blocked: "#f85149",
+};
+
 export interface VaultConfig {
   vault_path: string;
   lm_studio_url: string;
@@ -51,6 +67,7 @@ export interface VaultConfig {
   auto_process: boolean;
   theme: string;
   user_name: string;
+  status_colors: StatusColors;
 }
 
 export interface LlmModel {
@@ -128,12 +145,18 @@ export const URGENCY_COLUMNS: BoardColumn[] = [
   { id: "ongoing", title: "Ongoing / Strategic", color: "#3fb950", taskIds: [] },
 ];
 
-export const STATUS_COLUMNS: BoardColumn[] = [
-  { id: "todo", title: "To Do", color: "#8b949e", taskIds: [] },
-  { id: "in_progress", title: "In Progress", color: "#d29922", taskIds: [] },
-  { id: "review", title: "Review", color: "#58a6ff", taskIds: [] },
-  { id: "done", title: "Done", color: "#3fb950", taskIds: [] },
-];
+export function getStatusColumns(colors?: StatusColors): BoardColumn[] {
+  const c = colors || DEFAULT_STATUS_COLORS;
+  return [
+    { id: "todo", title: "To Do", color: c.todo, taskIds: [] },
+    { id: "in_progress", title: "In Progress", color: c.in_progress, taskIds: [] },
+    { id: "review", title: "Review", color: c.review, taskIds: [] },
+    { id: "done", title: "Done", color: c.done, taskIds: [] },
+  ];
+}
+
+// Backwards compat default
+export const STATUS_COLUMNS: BoardColumn[] = getStatusColumns();
 
 // Auto-assigned colors for projects. Add custom overrides here.
 const PALETTE = [
@@ -166,6 +189,11 @@ export const PROJECT_COLORS: Record<string, string> = new Proxy(
     },
   }
 );
+
+export function getStatusColor(status: TaskStatus, colors?: StatusColors): string {
+  const c = colors || DEFAULT_STATUS_COLORS;
+  return c[status] || DEFAULT_STATUS_COLORS[status] || "#8b949e";
+}
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {
   todo: "To Do",

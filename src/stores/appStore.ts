@@ -12,6 +12,7 @@ import type {
   ProjectSpace,
   SpaceNote,
 } from "@/types";
+import { DEFAULT_STATUS_COLORS } from "@/types";
 
 interface AppState {
   // Navigation
@@ -148,6 +149,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     auto_process: true,
     theme: "dark",
     user_name: "",
+    status_colors: { ...DEFAULT_STATUS_COLORS },
   },
   setConfig: (config) => set({ config }),
 

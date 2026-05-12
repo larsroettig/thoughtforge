@@ -12,12 +12,25 @@ import {
   Sun,
   Moon,
   Monitor,
+  Cpu,
+  AlertCircle,
+  Circle,
 } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useAppStore } from "@/stores/appStore";
 import { useVault } from "@/hooks/useVault";
 import { useLlm } from "@/hooks/useLlm";
 import { useTheme, type Theme } from "@/hooks/useTheme";
+import { DEFAULT_STATUS_COLORS, STATUS_LABELS } from "@/types";
+import type { TaskStatus, StatusColors } from "@/types";
+
+const COLOR_PRESETS = [
+  "#8b949e", "#6c5ce7", "#58a6ff", "#79c0ff", "#3498db",
+  "#d29922", "#f0883e", "#e67e22", "#f39c12",
+  "#3fb950", "#27ae60", "#56d364",
+  "#f85149", "#e74c3c", "#db61a2",
+  "#bc8cff", "#9b59b6",
+];
 
 export function SettingsView() {
   const { config, setConfig, models, llmConnected } = useAppStore();
@@ -28,10 +41,17 @@ export function SettingsView() {
   const [form, setForm] = useState(config);
   const [checking, setChecking] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [editingStatusColor, setEditingStatusColor] = useState<TaskStatus | null>(null);
 
   useEffect(() => {
     setForm(config);
   }, [config]);
+
+  // Ensure status_colors always has defaults
+  const statusColors: StatusColors = {
+    ...DEFAULT_STATUS_COLORS,
+    ...(form.status_colors || {}),
+  };
 
   const handleCheckConnection = useCallback(async () => {
     setChecking(true);
@@ -40,15 +60,11 @@ export function SettingsView() {
   }, [checkConnection]);
 
   const handleAddWatchFolder = useCallback(async () => {
-    const folder = await open({
-      directory: true,
-      multiple: false,
-    });
+    const folder = await open({ directory: true, multiple: false });
     if (folder) {
-      const path = typeof folder === 'string' ? folder : folder;
       setForm((prev) => ({
         ...prev,
-        watched_folders: [...prev.watched_folders, path as string],
+        watched_folders: [...prev.watched_folders, String(folder)],
       }));
     }
   }, []);
@@ -61,22 +77,27 @@ export function SettingsView() {
   }, []);
 
   const handleSave = useCallback(async () => {
-    await saveConfig(form);
-    setConfig(form);
-
-    // Restart watchers
-    if (form.watched_folders.length > 0) {
-      await startWatching(form.watched_folders);
-    }
-
-    // Refresh LLM connection if URL changed
-    if (form.lm_studio_url !== config.lm_studio_url) {
-      await checkConnection();
-    }
-
+    const toSave = { ...form, status_colors: statusColors };
+    await saveConfig(toSave);
+    setConfig(toSave);
+    if (toSave.watched_folders.length > 0) await startWatching(toSave.watched_folders);
+    if (toSave.lm_studio_url !== config.lm_studio_url) await checkConnection();
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
-  }, [form, saveConfig, setConfig, startWatching, checkConnection, config.lm_studio_url]);
+  }, [form, statusColors, saveConfig, setConfig, startWatching, checkConnection, config.lm_studio_url]);
+
+  const handleSetStatusColor = (status: TaskStatus, color: string) => {
+    setForm((prev) => ({
+      ...prev,
+      status_colors: { ...statusColors, [status]: color },
+    }));
+    setEditingStatusColor(null);
+  };
+
+  const activeModel = models.find((m) => m.id === form.active_model);
+  const activeModelName = activeModel
+    ? activeModel.id.split("/").pop() || activeModel.id
+    : null;
 
   return (
     <div className="h-full overflow-y-auto">
@@ -87,10 +108,11 @@ export function SettingsView() {
         <section className="space-y-4">
           <h3 className="text-sm font-semibold text-vault-text uppercase tracking-wide flex items-center gap-2">
             <Brain className="w-4 h-4 text-vault-accent" />
-            LM Studio Connection
+            LM Studio
           </h3>
 
           <div className="card-base p-4 space-y-4">
+            {/* Connection URL */}
             <div>
               <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
                 Server URL
@@ -110,56 +132,68 @@ export function SettingsView() {
                   disabled={checking}
                   className="btn-ghost flex items-center gap-1.5 text-xs"
                 >
-                  {checking ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <RefreshCw className="w-3.5 h-3.5" />
-                  )}
+                  {checking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
                   Test
                 </button>
               </div>
-
               <div className="flex items-center gap-2 mt-2 text-xs">
                 {llmConnected ? (
                   <>
                     <Wifi className="w-3 h-3 text-vault-success" />
-                    <span className="text-vault-success">
-                      Connected - {models.length} model(s) available
-                    </span>
+                    <span className="text-vault-success">Connected - {models.length} model(s) available</span>
                   </>
                 ) : (
                   <>
                     <WifiOff className="w-3 h-3 text-vault-critical" />
-                    <span className="text-vault-critical">
-                      Not connected. Make sure LM Studio is running.
-                    </span>
+                    <span className="text-vault-critical">Not connected. Make sure LM Studio is running.</span>
                   </>
                 )}
               </div>
             </div>
 
-            {/* Model Selection */}
+            {/* Active Model -- prominent display */}
             <div>
-              <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
+              <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-2 block">
                 Active Model
               </label>
+
+              {activeModelName ? (
+                <div className="flex items-center gap-3 bg-vault-bg rounded-lg px-4 py-3 border border-vault-border">
+                  <Cpu className="w-5 h-5 text-vault-accent" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-vault-text-bright truncate">{activeModelName}</p>
+                    <p className="text-[10px] text-vault-text-muted truncate">{activeModel?.id}</p>
+                  </div>
+                  <span className="text-[10px] bg-vault-success/15 text-vault-success px-2 py-0.5 rounded-full font-medium">
+                    Loaded
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3 bg-vault-warning/5 rounded-lg px-4 py-3 border border-vault-warning/20">
+                  <AlertCircle className="w-5 h-5 text-vault-warning" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-vault-warning">No model selected</p>
+                    <p className="text-[10px] text-vault-text-muted">Select a model below or load one in LM Studio</p>
+                  </div>
+                </div>
+              )}
+
               <select
                 value={form.active_model}
                 onChange={(e) =>
                   setForm((prev) => ({ ...prev, active_model: e.target.value }))
                 }
-                className="input-base w-full"
+                className="input-base w-full mt-2"
                 disabled={models.length === 0}
               >
                 <option value="">Select a model...</option>
                 {models.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.id}
-                  </option>
+                  <option key={m.id} value={m.id}>{m.id}</option>
                 ))}
               </select>
+
               {models.length === 0 && llmConnected && (
-                <div className="mt-2 p-3 bg-vault-warning/10 border border-vault-warning/20 rounded-lg">
+                <div className="mt-3 p-3 bg-vault-warning/10 border border-vault-warning/20 rounded-lg">
                   <p className="text-xs text-vault-warning font-medium mb-1.5">
                     No models loaded in LM Studio
                   </p>
@@ -170,7 +204,19 @@ export function SettingsView() {
                     lms load qwen2.5-7b-instruct
                   </code>
                   <p className="text-[10px] text-vault-text-muted mt-1.5">
-                    Then click "Test" above to refresh. Recommended: 7B+ models for chat, 32B+ for transcript extraction.
+                    Then click "Test" above to refresh. Recommended: 7B+ for chat, 32B+ for extraction.
+                  </p>
+                </div>
+              )}
+
+              {!llmConnected && (
+                <div className="mt-3 p-3 bg-vault-critical/10 border border-vault-critical/20 rounded-lg">
+                  <p className="text-xs text-vault-critical font-medium mb-1">
+                    LM Studio not running
+                  </p>
+                  <p className="text-[11px] text-vault-text-muted">
+                    Download and start LM Studio from{" "}
+                    <span className="text-vault-accent">lmstudio.ai</span>, then click "Test" above.
                   </p>
                 </div>
               )}
@@ -180,103 +226,94 @@ export function SettingsView() {
 
         {/* Profile */}
         <section className="space-y-4">
-          <h3 className="text-sm font-semibold text-vault-text uppercase tracking-wide">
-            Profile
-          </h3>
-
-          <div className="card-base p-4 space-y-4">
-            <div>
-              <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
-                Your Name
-              </label>
-              <input
-                type="text"
-                value={form.user_name}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, user_name: e.target.value }))
-                }
-                placeholder="e.g. Lars"
-                className="input-base w-full"
-              />
-              <p className="text-xs text-vault-text-muted mt-1">
-                Used for "My Tasks" filter on the dashboard. Matches against task owners.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* Vault Configuration */}
-        <section className="space-y-4">
-          <h3 className="text-sm font-semibold text-vault-text uppercase tracking-wide">
-            Vault
-          </h3>
-
-          <div className="card-base p-4 space-y-4">
-            <div>
-              <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
-                Vault Path
-              </label>
-              <input
-                type="text"
-                value={form.vault_path}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, vault_path: e.target.value }))
-                }
-                className="input-base w-full"
-                disabled
-              />
-              <p className="text-xs text-vault-text-muted mt-1">
-                All tasks, projects, and chats are stored here as markdown files.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* Watched Folders */}
-        <section className="space-y-4">
-          <h3 className="text-sm font-semibold text-vault-text uppercase tracking-wide">
-            Watched Folders
-          </h3>
-
-          <div className="card-base p-4 space-y-3">
-            <p className="text-xs text-vault-text-muted">
-              The app watches these folders for new transcripts and documents. New
-              files are automatically queued for processing.
+          <h3 className="text-sm font-semibold text-vault-text uppercase tracking-wide">Profile</h3>
+          <div className="card-base p-4">
+            <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
+              Your Name
+            </label>
+            <input
+              type="text"
+              value={form.user_name}
+              onChange={(e) => setForm((prev) => ({ ...prev, user_name: e.target.value }))}
+              placeholder="e.g. Lars"
+              className="input-base w-full"
+            />
+            <p className="text-xs text-vault-text-muted mt-1">
+              Used for "My Tasks" dashboard filter. Matches against task owners.
             </p>
+          </div>
+        </section>
 
-            {form.watched_folders.map((folder, i) => (
-              <div
-                key={`${folder}-${i}`}
-                className="flex items-center gap-2 bg-vault-bg rounded-lg px-3 py-2"
+        {/* Status Colors */}
+        <section className="space-y-4">
+          <h3 className="text-sm font-semibold text-vault-text uppercase tracking-wide">
+            Status Colors
+          </h3>
+          <div className="card-base p-4">
+            <p className="text-xs text-vault-text-muted mb-4">
+              Customize the color for each task status. Used on board columns, cards, and dashboard.
+            </p>
+            <div className="space-y-3">
+              {(["todo", "in_progress", "review", "done", "blocked"] as TaskStatus[]).map((status) => {
+                const color = statusColors[status];
+                const isEditing = editingStatusColor === status;
+                return (
+                  <div key={status}>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => setEditingStatusColor(isEditing ? null : status)}
+                        className="w-7 h-7 rounded-lg border-2 border-vault-border hover:border-vault-text-muted transition-colors flex-shrink-0"
+                        style={{ backgroundColor: color }}
+                      />
+                      <div className="flex-1">
+                        <p className="text-sm text-vault-text-bright">{STATUS_LABELS[status]}</p>
+                      </div>
+                      <code className="text-[10px] font-mono text-vault-text-muted">{color}</code>
+                    </div>
+
+                    {isEditing && (
+                      <div className="mt-2 ml-10 flex flex-wrap gap-1.5 p-2 bg-vault-bg rounded-lg border border-vault-border">
+                        {COLOR_PRESETS.map((c) => (
+                          <button
+                            key={c}
+                            onClick={() => handleSetStatusColor(status, c)}
+                            className={`w-6 h-6 rounded-md border transition-transform hover:scale-110 ${
+                              color === c ? "border-vault-text-bright scale-110" : "border-transparent"
+                            }`}
+                            style={{ backgroundColor: c }}
+                          />
+                        ))}
+                        <input
+                          type="color"
+                          value={color}
+                          onChange={(e) => handleSetStatusColor(status, e.target.value)}
+                          className="w-6 h-6 rounded-md cursor-pointer border border-vault-border"
+                          title="Custom color"
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              <button
+                onClick={() => {
+                  setForm((prev) => ({
+                    ...prev,
+                    status_colors: { ...DEFAULT_STATUS_COLORS },
+                  }));
+                }}
+                className="text-[10px] text-vault-text-muted hover:text-vault-accent mt-2"
               >
-                <span className="text-sm text-vault-text truncate flex-1">
-                  {folder}
-                </span>
-                <button
-                  onClick={() => handleRemoveWatchFolder(i)}
-                  className="btn-ghost p-1 text-vault-critical"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ))}
-
-            <button
-              onClick={handleAddWatchFolder}
-              className="btn-ghost flex items-center gap-1.5 text-xs w-full justify-center"
-            >
-              <FolderPlus className="w-3.5 h-3.5" />
-              Add Watch Folder
-            </button>
+                Reset to defaults
+              </button>
+            </div>
           </div>
         </section>
 
         {/* Appearance */}
         <section className="space-y-4">
-          <h3 className="text-sm font-semibold text-vault-text uppercase tracking-wide">
-            Appearance
-          </h3>
-
+          <h3 className="text-sm font-semibold text-vault-text uppercase tracking-wide">Appearance</h3>
           <div className="card-base p-4">
             <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-3 block">
               Theme
@@ -308,55 +345,62 @@ export function SettingsView() {
           </div>
         </section>
 
+        {/* Vault */}
+        <section className="space-y-4">
+          <h3 className="text-sm font-semibold text-vault-text uppercase tracking-wide">Vault</h3>
+          <div className="card-base p-4">
+            <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
+              Vault Path
+            </label>
+            <input type="text" value={form.vault_path} className="input-base w-full" disabled />
+            <p className="text-xs text-vault-text-muted mt-1">All data stored here as markdown files.</p>
+          </div>
+        </section>
+
+        {/* Watched Folders */}
+        <section className="space-y-4">
+          <h3 className="text-sm font-semibold text-vault-text uppercase tracking-wide">Watched Folders</h3>
+          <div className="card-base p-4 space-y-3">
+            <p className="text-xs text-vault-text-muted">
+              Watch folders for new transcripts. New files are queued for AI extraction.
+            </p>
+            {form.watched_folders.map((folder, i) => (
+              <div key={`${folder}-${i}`} className="flex items-center gap-2 bg-vault-bg rounded-lg px-3 py-2">
+                <span className="text-sm text-vault-text truncate flex-1">{folder}</span>
+                <button onClick={() => handleRemoveWatchFolder(i)} className="btn-ghost p-1 text-vault-critical">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+            <button onClick={handleAddWatchFolder} className="btn-ghost flex items-center gap-1.5 text-xs w-full justify-center">
+              <FolderPlus className="w-3.5 h-3.5" /> Add Watch Folder
+            </button>
+          </div>
+        </section>
+
         {/* Processing */}
         <section className="space-y-4">
-          <h3 className="text-sm font-semibold text-vault-text uppercase tracking-wide">
-            Processing
-          </h3>
-
-          <div className="card-base p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-vault-text uppercase tracking-wide">Processing</h3>
+          <div className="card-base p-4">
             <label className="flex items-center gap-3 cursor-pointer">
               <input
                 type="checkbox"
                 checked={form.auto_process}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    auto_process: e.target.checked,
-                  }))
-                }
-                className="w-4 h-4 rounded border-vault-border bg-vault-bg text-vault-accent focus:ring-vault-accent/30"
+                onChange={(e) => setForm((prev) => ({ ...prev, auto_process: e.target.checked }))}
+                className="w-4 h-4 rounded"
               />
               <div>
-                <p className="text-sm text-vault-text">
-                  Auto-process new documents
-                </p>
-                <p className="text-xs text-vault-text-muted">
-                  Automatically extract action items when new files appear in
-                  watched folders
-                </p>
+                <p className="text-sm text-vault-text">Auto-process new documents</p>
+                <p className="text-xs text-vault-text-muted">Extract action items when new files appear in watched folders</p>
               </div>
             </label>
           </div>
         </section>
 
-        {/* Save Button */}
+        {/* Save */}
         <div className="flex justify-end pb-8">
-          <button
-            onClick={handleSave}
-            className="btn-primary flex items-center gap-1.5"
-          >
-            {saved ? (
-              <>
-                <Check className="w-4 h-4" />
-                Saved
-              </>
-            ) : (
-              <>
-                <Save className="w-4 h-4" />
-                Save Settings
-              </>
-            )}
+          <button onClick={handleSave} className="btn-primary flex items-center gap-1.5">
+            {saved ? <><Check className="w-4 h-4" /> Saved</> : <><Save className="w-4 h-4" /> Save Settings</>}
           </button>
         </div>
       </div>

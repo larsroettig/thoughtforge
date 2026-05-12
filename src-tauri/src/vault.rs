@@ -41,6 +41,38 @@ pub struct ProjectData {
     pub content: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StatusColors {
+    #[serde(default = "default_todo_color")]
+    pub todo: String,
+    #[serde(default = "default_in_progress_color")]
+    pub in_progress: String,
+    #[serde(default = "default_review_color")]
+    pub review: String,
+    #[serde(default = "default_done_color")]
+    pub done: String,
+    #[serde(default = "default_blocked_color")]
+    pub blocked: String,
+}
+
+fn default_todo_color() -> String { "#8b949e".to_string() }
+fn default_in_progress_color() -> String { "#d29922".to_string() }
+fn default_review_color() -> String { "#58a6ff".to_string() }
+fn default_done_color() -> String { "#3fb950".to_string() }
+fn default_blocked_color() -> String { "#f85149".to_string() }
+
+impl Default for StatusColors {
+    fn default() -> Self {
+        Self {
+            todo: default_todo_color(),
+            in_progress: default_in_progress_color(),
+            review: default_review_color(),
+            done: default_done_color(),
+            blocked: default_blocked_color(),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VaultConfig {
     pub vault_path: String,
@@ -51,6 +83,8 @@ pub struct VaultConfig {
     pub theme: String,
     #[serde(default)]
     pub user_name: String,
+    #[serde(default)]
+    pub status_colors: StatusColors,
 }
 
 impl Default for VaultConfig {
@@ -63,6 +97,7 @@ impl Default for VaultConfig {
             auto_process: true,
             theme: "dark".to_string(),
             user_name: String::new(),
+            status_colors: StatusColors::default(),
         }
     }
 }

@@ -48,9 +48,12 @@ export function ChatView() {
     llmConnected,
     tasks,
     updateTask,
+    config,
+    models,
+    setView,
   } = useAppStore();
   const { saveTask } = useVault();
-  const { planningChat } = useLlm();
+  const { planningChat, checkConnection } = useLlm();
 
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -338,47 +341,93 @@ export function ChatView() {
           {/* Empty state */}
           {displayMessages.length === 0 && !isStreaming && (
             <div className="flex items-center justify-center h-full">
-              <div className="text-center max-w-lg">
-                <Sparkles className="w-10 h-10 mx-auto mb-4 text-vault-accent opacity-40" />
-                <h3 className="text-lg font-semibold text-vault-text-bright mb-1">
-                  Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 17 ? "afternoon" : "evening"}
-                </h3>
-                <p className="text-sm text-vault-text-muted mb-6">
-                  Plan your day, review your week, or ask about your tasks.
-                  <br />
-                  <span className="text-[10px]">Changes are proposed first -- you approve before anything is written.</span>
-                </p>
-
-                <div className="grid grid-cols-2 gap-3 text-left mb-4">
-                  <button
-                    onClick={() => handleQuickSend("Plan my day. What should I focus on today? Give me a prioritized daily plan with time blocks based on my current tasks, due dates, and what's overdue. Set due dates to today for the tasks you recommend.")}
-                    className="card-base p-4 hover:border-vault-accent group"
-                  >
-                    <span className="text-vault-accent font-semibold text-sm block mb-1">Plan My Day</span>
-                    <span className="text-vault-text-muted text-xs block">Focused daily plan with priorities and time blocks</span>
-                  </button>
-                  <button
-                    onClick={() => handleQuickSend("Plan my week. Give me a day-by-day breakdown Monday through Friday with daily goals. Set due dates on tasks for each day you assign them to. Suggest 2-4 tasks per day.")}
-                    className="card-base p-4 hover:border-vault-accent group"
-                  >
-                    <span className="text-vault-accent font-semibold text-sm block mb-1">Plan My Week</span>
-                    <span className="text-vault-text-muted text-xs block">Day-by-day breakdown with daily goals</span>
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2 text-left">
-                  {SLASH_COMMANDS.slice(2, 8).map((cmd) => (
+              {/* No model loaded -- show setup message */}
+              {(!llmConnected || models.length === 0 || !config.active_model) ? (
+                <div className="text-center max-w-md">
+                  <div className="w-16 h-16 rounded-2xl bg-vault-warning/10 flex items-center justify-center mx-auto mb-5">
+                    <Sparkles className="w-8 h-8 text-vault-warning" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-vault-text-bright mb-2">
+                    {!llmConnected ? "LM Studio Not Connected" : models.length === 0 ? "No Models Loaded" : "No Model Selected"}
+                  </h3>
+                  <p className="text-sm text-vault-text-muted mb-6 leading-relaxed">
+                    {!llmConnected ? (
+                      "Start LM Studio to enable AI chat, planning, and task extraction."
+                    ) : models.length === 0 ? (
+                      <>
+                        LM Studio is connected but no models are loaded. Load a model in LM Studio or run:
+                        <code className="block mt-2 text-xs bg-vault-bg rounded px-3 py-1.5 text-vault-accent font-mono">
+                          lms load qwen2.5-7b-instruct
+                        </code>
+                      </>
+                    ) : (
+                      "Select a model in Settings to start using AI features."
+                    )}
+                  </p>
+                  <div className="flex gap-3 justify-center">
                     <button
-                      key={cmd.cmd}
-                      onClick={() => handleSlashCommand(cmd.cmd)}
-                      className="card-base text-xs p-2.5"
+                      onClick={() => setView("settings")}
+                      className="btn-primary text-sm flex items-center gap-2"
                     >
-                      <span className="text-vault-accent font-mono text-[11px]">{cmd.cmd}</span>
-                      <span className="text-vault-text-muted block mt-0.5 text-[10px]">{cmd.desc}</span>
+                      Go to Settings
                     </button>
-                  ))}
+                    {llmConnected && (
+                      <button
+                        onClick={() => checkConnection()}
+                        className="btn-ghost text-sm"
+                      >
+                        Refresh Models
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                /* Model ready -- show planning UI */
+                <div className="text-center max-w-lg">
+                  <Sparkles className="w-10 h-10 mx-auto mb-4 text-vault-accent opacity-40" />
+                  <h3 className="text-lg font-semibold text-vault-text-bright mb-1">
+                    Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 17 ? "afternoon" : "evening"}
+                  </h3>
+                  <p className="text-xs text-vault-text-muted mb-1">
+                    Model: <span className="text-vault-accent">{config.active_model.split("/").pop()}</span>
+                  </p>
+                  <p className="text-sm text-vault-text-muted mb-6">
+                    Plan your day, review your week, or ask about your tasks.
+                    <br />
+                    <span className="text-[10px]">Changes are proposed first -- you approve before anything is written.</span>
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-3 text-left mb-4">
+                    <button
+                      onClick={() => handleQuickSend("Plan my day. What should I focus on today? Give me a prioritized daily plan with time blocks based on my current tasks, due dates, and what's overdue. Set due dates to today for the tasks you recommend.")}
+                      className="card-base p-4 hover:border-vault-accent group"
+                    >
+                      <span className="text-vault-accent font-semibold text-sm block mb-1">Plan My Day</span>
+                      <span className="text-vault-text-muted text-xs block">Focused daily plan with priorities and time blocks</span>
+                    </button>
+                    <button
+                      onClick={() => handleQuickSend("Plan my week. Give me a day-by-day breakdown Monday through Friday with daily goals. Set due dates on tasks for each day you assign them to. Suggest 2-4 tasks per day.")}
+                      className="card-base p-4 hover:border-vault-accent group"
+                    >
+                      <span className="text-vault-accent font-semibold text-sm block mb-1">Plan My Week</span>
+                      <span className="text-vault-text-muted text-xs block">Day-by-day breakdown with daily goals</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 text-left">
+                    {SLASH_COMMANDS.slice(2, 8).map((cmd) => (
+                      <button
+                        key={cmd.cmd}
+                        onClick={() => handleSlashCommand(cmd.cmd)}
+                        className="card-base text-xs p-2.5"
+                      >
+                        <span className="text-vault-accent font-mono text-[11px]">{cmd.cmd}</span>
+                        <span className="text-vault-text-muted block mt-0.5 text-[10px]">{cmd.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -540,11 +589,13 @@ export function ChatView() {
                 }}
                 onKeyDown={handleKeyDown}
                 placeholder={
-                  llmConnected
-                    ? 'Ask about your projects... (type / for commands)'
-                    : "LM Studio not connected. Check settings."
+                  !llmConnected
+                    ? "LM Studio not connected..."
+                    : !config.active_model
+                    ? "No model selected. Go to Settings to choose one."
+                    : "Ask about your projects... (type / for commands)"
                 }
-                disabled={!llmConnected || pendingActions.length > 0}
+                disabled={!llmConnected || !config.active_model || pendingActions.length > 0}
                 className="input-base w-full resize-none"
                 rows={1}
                 onInput={(e) => {
@@ -556,7 +607,7 @@ export function ChatView() {
             </div>
             <button
               onClick={handleSend}
-              disabled={!input.trim() || isStreaming || !llmConnected || pendingActions.length > 0}
+              disabled={!input.trim() || isStreaming || !llmConnected || !config.active_model || pendingActions.length > 0}
               className="btn-primary px-3 disabled:opacity-50"
             >
               {isStreaming ? (
@@ -574,9 +625,24 @@ export function ChatView() {
           )}
 
           {!llmConnected && (
-            <p className="text-xs text-vault-critical mt-2">
-              LM Studio is not connected. Start LM Studio and check your connection settings.
-            </p>
+            <div className="flex items-center gap-2 mt-2">
+              <p className="text-xs text-vault-critical flex-1">
+                LM Studio not connected.
+              </p>
+              <button onClick={() => setView("settings")} className="text-xs text-vault-accent hover:underline">
+                Open Settings
+              </button>
+            </div>
+          )}
+          {llmConnected && !config.active_model && (
+            <div className="flex items-center gap-2 mt-2">
+              <p className="text-xs text-vault-warning flex-1">
+                {models.length === 0 ? "No models loaded in LM Studio." : "No model selected."}
+              </p>
+              <button onClick={() => setView("settings")} className="text-xs text-vault-accent hover:underline">
+                {models.length === 0 ? "Load a Model" : "Select Model"}
+              </button>
+            </div>
           )}
         </div>
       </div>
