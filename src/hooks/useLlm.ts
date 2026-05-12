@@ -23,84 +23,24 @@ Respond ONLY with a valid JSON array of objects. No markdown, no explanation.
 Example:
 [{"title":"Review quarterly report","owner":"Alice","priority":"high","urgency":"this_week","project":"marketing","due":"2026-05-14","source_quote":"I will send the report today","subtasks":[]}]`;
 
-const PLANNING_SYSTEM_PROMPT = `You are ThoughtForge, a personal AI planning assistant that can READ and MODIFY the user's task board. Today's date is provided in the context.
+const PLANNING_SYSTEM_PROMPT = `You are ThoughtForge, a task planning assistant. You can read and modify the user's task board.
 
-## Capabilities
-You can help the user by:
-- Answering questions about their projects and commitments
-- Prioritizing and organizing tasks
-- Planning their day or week
-- **CHANGING tasks** (priority, due date, status, owner) when the user asks
+## Actions (put AFTER your text, one per line)
+Modify: [[ACTION: set_due | title_substring | YYYY-MM-DD]]
+         [[ACTION: set_priority | title_substring | critical/high/medium/low]]
+         [[ACTION: set_status | title_substring | todo/in_progress/review/done/blocked]]
+         [[ACTION: set_owner | title_substring | Name]]
+         [[ACTION: archive | title_substring]]
+Clear date: [[ACTION: set_due | title_substring | ]]
+Create: [[ACTION: create_task | Title | project_id | priority | owner]]
 
-## How to change tasks
-When the user asks you to change something on a task, you MUST include action blocks in your response. Put each action on its own line using this exact format:
-
-[[ACTION: set_due | task_title_substring | YYYY-MM-DD]]
-[[ACTION: set_priority | task_title_substring | critical/high/medium/low]]
-[[ACTION: set_status | task_title_substring | todo/in_progress/review/done/blocked]]
-[[ACTION: set_owner | task_title_substring | Owner Name]]
-[[ACTION: archive | task_title_substring]]
-
-The task_title_substring is a unique part of the task title (case-insensitive match). Use enough of the title to uniquely identify it.
-
-## How to create NEW tasks
-When the user asks you to create a task, add a to-do, or when planning suggests new work:
-
-[[ACTION: create_task | Task Title | project_id | priority | owner]]
-
-- project_id: lowercase hyphenated project name (e.g. "hackathon", "ai-team"), or "general" if unsure
-- priority: critical/high/medium/low
-- owner: name of the person, or empty if unassigned
-
-Examples:
-- User: "create a task to review the contract" -> [[ACTION: create_task | Review the contract | general | medium | ]]
-- User: "add a high priority task for the hackathon demo" -> [[ACTION: create_task | Prepare hackathon demo | hackathon | high | ]]
-- User: "remind me to book flights" -> [[ACTION: create_task | Book flights | personal | medium | ]]
-
-## Examples for modifying tasks:
-- User: "set quarterly report to high priority" -> [[ACTION: set_priority | quarterly report | high]]
-- User: "make the review task due today" -> [[ACTION: set_due | review task | 2026-05-12]]
-- User: "mark design mockup as in progress" -> [[ACTION: set_status | design mockup | in_progress]]
-- User: "assign the Jira task to Bob" -> [[ACTION: set_owner | Jira | Bob]]
-
-## Planning with actions
-When planning a day or week, use set_due on EXISTING tasks. Create new tasks only if the user explicitly asks.
-
-CRITICAL RULES FOR SCHEDULING:
-- NEVER schedule tasks on non-working days (weekends or public holidays)
-- The context includes a list of non-working days for the current period
-- If a task is currently due on a non-working day, move it to the next working day
-- Saturday and Sunday are ALWAYS non-working days
-- MAXIMUM 3-5 tasks per day. If a day has too many, move lower-priority tasks to the next day or clear their due date
-- The context shows "Workload per day" -- respect the capacity limits
-- To REMOVE a due date (unschedule a task), use: [[ACTION: set_due | task_title | ]]  (empty value clears the date)
-
-When the user asks to plan their day (/plan-day):
-1. Check if today is a working day. If not, say so and plan for the next working day instead
-2. Look at overdue, due-today, and high-priority tasks
-3. Pick ONLY 3-5 tasks for today (or next working day) -- do not overload
-4. If today already has more than 5 tasks, move lower-priority ones to tomorrow or clear their dates
-5. Set their due dates using [[ACTION: set_due | ... | YYYY-MM-DD]]
-6. For tasks that are too much: [[ACTION: set_due | task_title | ]]  to clear the date
-7. Present the plan clearly, explain what was deferred and why
-
-When the user asks to plan their week (/plan-week):
-1. Look at all open tasks, deadlines, priorities
-2. Distribute tasks across WORKING DAYS ONLY (skip weekends and holidays listed in context)
-3. MAX 3-5 tasks per day -- if there are more tasks than available slots, defer lower-priority tasks (clear their due dates)
-4. Set due dates using [[ACTION: set_due | ... | YYYY-MM-DD]] for each scheduled task
-5. For deferred tasks: [[ACTION: set_due | task_title | ]]  to clear overloaded dates
-6. Present the day-by-day plan with only working days
-7. List deferred tasks separately at the end as "Backlog (unscheduled)"
-
-IMPORTANT:
-- Always include [[ACTION:...]] blocks when modifying or creating tasks
-- Put actions AFTER your explanation text, not before
-- You can include multiple actions in one response
-- Always confirm what you changed in your text response
-- If you can't find a matching task, say so instead of guessing
-- For create_task: the task is created as "todo" status with urgency "ongoing" and due date empty
-- To clear a due date, set value to empty string: [[ACTION: set_due | task_title | ]]`;
+## Rules
+- NEVER create a task if one with a similar title already exists. Modify the existing one instead.
+- NEVER schedule on weekends or holidays (listed in context).
+- Max 4 tasks per day. If overloaded, clear dates of low-priority tasks.
+- Only create tasks when the user EXPLICITLY asks. Planning = rearranging existing tasks.
+- Use enough of the title to uniquely match. Check the task list before acting.
+- Be concise. Bullet points.`;
 
 export interface TaskAction {
   type: "set_due" | "set_priority" | "set_status" | "set_owner" | "archive" | "create_task";
@@ -358,65 +298,45 @@ export function useLlm() {
       (t) => t.due && !isWorkingDay(t.due, country)
     );
 
-    // Build workload per day for the next 2 weeks
-    const workloadByDay: Record<string, { count: number; hours: number; tasks: string[] }> = {};
-    for (const t of openTasks) {
-      if (t.due) {
-        if (!workloadByDay[t.due]) workloadByDay[t.due] = { count: 0, hours: 0, tasks: [] };
-        workloadByDay[t.due].count++;
-        workloadByDay[t.due].hours += t.estimated_hours || 1;
-        workloadByDay[t.due].tasks.push(t.title);
-      }
-    }
-
-    const overloadedDays = Object.entries(workloadByDay)
-      .filter(([, w]) => w.count > 5)
-      .map(([date, w]) => `- ${date}: ${w.count} tasks, ~${w.hours.toFixed(1)}h (OVERLOADED -- max 5)`)
-      .join("\n");
-
-    const workloadStr = Object.entries(workloadByDay)
-      .filter(([date]) => date >= today)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .slice(0, 14)
-      .map(([date, w]) => {
-        const isWorking = isWorkingDay(date, country);
-        return `- ${date}: ${w.count} tasks, ~${w.hours.toFixed(1)}h${!isWorking ? " (NON-WORKING DAY!)" : ""}${w.count > 5 ? " OVERLOADED" : ""}`;
-      })
-      .join("\n");
-
-    const taskSummary = openTasks
-      .map(
-        (t) =>
-          `- [${t.status}] "${t.title}" (${t.priority}) owner:${t.owner || "unassigned"} project:${t.project || "none"}${t.due ? ` due:${t.due}` : " no-date"}${t.estimated_hours ? ` est:${t.estimated_hours}h` : ""}${t.actual_hours ? ` tracked:${t.actual_hours}h` : ""}`
-      )
-      .join("\n");
-
-    const projects = [...new Set(openTasks.map((t) => t.project).filter(Boolean))];
-    const unscheduled = openTasks.filter((t) => !t.due).length;
     const todayIsWorking = isWorkingDay(today, country);
+    const projects = [...new Set(openTasks.map((t) => t.project).filter(Boolean))];
 
-    return `## Context
-Today: ${today} (${weekday})${!todayIsWorking ? " -- NON-WORKING DAY" : ""}
-Country: ${country}
+    // Only include RELEVANT tasks (max 30) -- prioritize overdue, due soon, high priority
+    const priorityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+    const relevantTasks = [...openTasks]
+      .sort((a, b) => {
+        // Overdue first
+        if (a.due && a.due < today && !(b.due && b.due < today)) return -1;
+        if (b.due && b.due < today && !(a.due && a.due < today)) return 1;
+        // Due soon next
+        if (a.due && b.due) {
+          const cmp = a.due.localeCompare(b.due);
+          if (cmp !== 0) return cmp;
+        }
+        if (a.due && !b.due) return -1;
+        if (!a.due && b.due) return 1;
+        // Then by priority
+        return (priorityOrder[a.priority] ?? 2) - (priorityOrder[b.priority] ?? 2);
+      })
+      .slice(0, 30);
 
-## Board Summary
-Open tasks: ${openTasks.length} (${unscheduled} unscheduled)
-Overdue: ${overdue.length}
-Due today: ${dueToday.length}
-Due next 2 weeks: ${dueThisWeek.length}
+    const taskLines = relevantTasks
+      .map((t) => `- "${t.title}" [${t.status}] ${t.priority}${t.due ? ` due:${t.due}` : ""} project:${t.project || "-"}`)
+      .join("\n");
+
+    // Compact non-working days (only holidays, weekends are implied)
+    const holidays = nonWorkingDays.filter((d) => d.name !== "Saturday" && d.name !== "Sunday");
+    const holidayStr = holidays.length > 0
+      ? holidays.map((d) => `${d.date} ${d.name}`).join(", ")
+      : "none";
+
+    return `Today: ${today} (${weekday})${!todayIsWorking ? " NON-WORKING" : ""} | Country: ${country}
+Open: ${openTasks.length} | Overdue: ${overdue.length} | Due today: ${dueToday.length}
 Projects: ${projects.join(", ") || "none"}
-
-## Workload per day (next 2 weeks):
-${workloadStr || "(no tasks scheduled)"}
-${overloadedDays ? `\n## WARNING: Overloaded days (more than 5 tasks):\n${overloadedDays}\nRemove due dates from lower-priority tasks on these days!\n` : ""}
-## Non-Working Days (next 2 weeks):
-${nonWorkingStr || "(none -- all days are working days)"}
-
-${tasksOnNonWorking.length > 0 ? `## WARNING: Tasks on non-working days (MUST reschedule):\n${tasksOnNonWorking.map((t) => `- "${t.title}" due:${t.due} -- RESCHEDULE to next working day`).join("\n")}\n` : ""}
-${overdue.length > 0 ? `### Overdue Tasks:\n${overdue.map((t) => `- "${t.title}" (due:${t.due}, ${t.priority}) owner:${t.owner}`).join("\n")}\n` : ""}
-${dueToday.length > 0 ? `### Due Today:\n${dueToday.map((t) => `- "${t.title}" (${t.priority}) owner:${t.owner}`).join("\n")}\n` : ""}
-### All Open Tasks:
-${taskSummary || "(no tasks yet)"}`;
+Holidays (next 2wk): ${holidayStr}
+${tasksOnNonWorking.length > 0 ? `Tasks on non-working days: ${tasksOnNonWorking.map((t) => `"${t.title}" ${t.due}`).join(", ")}\n` : ""}
+Tasks (top ${relevantTasks.length} of ${openTasks.length}):
+${taskLines || "(none)"}`;
   }, [tasks, config.country]);
 
   const planningChat = useCallback(

@@ -87,7 +87,15 @@ export function ChatView() {
 
       return actions.map((action) => {
         if (action.type === "create_task") {
-          // For create_task, there's no existing task to match
+          // Check for duplicates
+          const existing = findTaskByTitle(currentTasks, action.titleMatch);
+          if (existing && !existing.archived) {
+            return {
+              action,
+              task: existing,
+              label: `DUPLICATE: "${action.titleMatch}" already exists as "${existing.title}" -- will skip`,
+            };
+          }
           return {
             action,
             task: null, // null means "will create new"
@@ -119,8 +127,20 @@ export function ChatView() {
       const results: ActionResult[] = [];
 
       for (const p of pending) {
-        // Handle create_task
+        // Handle create_task -- with deduplication
         if (p.action.type === "create_task") {
+          // Check if a similar task already exists
+          const currentTasks = useAppStore.getState().tasks;
+          const duplicate = findTaskByTitle(currentTasks, p.action.titleMatch);
+          if (duplicate && !duplicate.archived) {
+            results.push({
+              action: p.action,
+              taskTitle: `${p.action.titleMatch} (SKIPPED: similar to "${duplicate.title}")`,
+              success: false,
+            });
+            continue;
+          }
+
           const newTask: Task = {
             id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
             title: p.action.titleMatch,
@@ -531,13 +551,16 @@ export function ChatView() {
 
                 <div className="space-y-1.5 mb-4">
                   {pendingActions.map((p, i) => {
-                    const isCreate = p.action.type === "create_task";
-                    const isNotFound = !isCreate && !p.task;
+                    const isCreate = p.action.type === "create_task" && !p.task;
+                    const isDuplicate = p.action.type === "create_task" && p.task;
+                    const isNotFound = !isCreate && !isDuplicate && !p.task;
                     return (
                     <div
                       key={i}
                       className={`flex items-start gap-2 text-xs px-3 py-2 rounded-lg ${
-                        isCreate
+                        isDuplicate
+                          ? "bg-vault-warning/10 text-vault-warning line-through opacity-60"
+                          : isCreate
                           ? "bg-vault-success/10 text-vault-text"
                           : isNotFound
                           ? "bg-vault-critical/10 text-vault-critical"
