@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import type { Task, TaskStatus, StatusColors } from "@/types";
 import { PROJECT_COLORS, STATUS_LABELS, DEFAULT_STATUS_COLORS } from "@/types";
+import { formatHours } from "@/lib/time";
 import { useAppStore } from "@/stores/appStore";
 import { useVault } from "@/hooks/useVault";
 import { OwnerSelect } from "./OwnerSelect";
@@ -233,7 +234,7 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
           {task.actual_hours > 0 && (
             <span className="tag bg-vault-success/10 text-vault-success border border-vault-success/20 flex items-center gap-1">
               <Clock className="w-2.5 h-2.5" />
-              {task.actual_hours.toFixed(1)}h
+              {formatHours(task.actual_hours)}
             </span>
           )}
 

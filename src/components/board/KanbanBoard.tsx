@@ -41,8 +41,8 @@ export function KanbanBoard() {
   const [showNewTask, setShowNewTask] = useState(false);
   const [showImport, setShowImport] = useState(false);
 
-  // Get unique projects from non-archived tasks
-  const activeTasks = useMemo(() => tasks.filter((t) => !t.archived), [tasks]);
+  // Get unique projects from non-archived, non-time-only tasks
+  const activeTasks = useMemo(() => tasks.filter((t) => !t.archived && !t.time_only), [tasks]);
 
   const projects = useMemo(() => {
     return [...new Set(activeTasks.map((t) => t.project).filter(Boolean))].sort();

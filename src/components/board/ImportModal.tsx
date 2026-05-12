@@ -282,6 +282,7 @@ export function ImportModal({ onClose }: ImportModalProps) {
           subtasks: [],
           notes: item.context,
           archived: false,
+  time_only: false,
         };
 
         await saveTask(task);

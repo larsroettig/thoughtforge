@@ -52,6 +52,7 @@ export function ExtractionModal() {
         subtasks: partial.subtasks || [],
         notes: partial.notes || "",
         archived: false,
+  time_only: false,
       };
 
       await saveTask(task);

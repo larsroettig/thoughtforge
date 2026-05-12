@@ -32,6 +32,8 @@ pub struct TaskData {
     pub notes: String,
     #[serde(default)]
     pub archived: bool,
+    #[serde(default)]
+    pub time_only: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -217,6 +219,7 @@ fn parse_task_markdown(content: &str) -> Option<TaskData> {
         subtasks: vec![],
         notes,
         archived: false,
+        time_only: false,
     };
 
     for line in frontmatter.lines() {
@@ -244,6 +247,9 @@ fn parse_task_markdown(content: &str) -> Option<TaskData> {
                 }
                 "archived" => {
                     task.archived = value == "true"
+                }
+                "time_only" => {
+                    task.time_only = value == "true"
                 }
                 _ => {}
             }
@@ -308,6 +314,7 @@ estimated_hours: {}
 actual_hours: {}
 blocked_by: {}
 archived: {}
+time_only: {}
 subtasks:
 {}
 ---
@@ -330,6 +337,7 @@ subtasks:
         task.actual_hours,
         blocked_by_str,
         task.archived,
+        task.time_only,
         subtasks_str,
         task.notes
     );

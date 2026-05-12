@@ -24,6 +24,7 @@ function makeTask(overrides: Partial<Task> & { id: string; title: string }): Tas
     subtasks: [],
     notes: "",
     archived: false,
+    time_only: false,
     ...overrides,
   };
 }

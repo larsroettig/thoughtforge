@@ -29,6 +29,7 @@ const EMPTY_TASK: Task = {
   subtasks: [],
   notes: "",
   archived: false,
+  time_only: false,
 };
 
 export function TaskModal({ task, onClose }: TaskModalProps) {
@@ -209,6 +210,22 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
               />
             </div>
           </div>
+
+          {/* Time-only toggle */}
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.time_only || false}
+              onChange={(e) => update("time_only", e.target.checked)}
+              className="w-4 h-4 rounded"
+            />
+            <div>
+              <p className="text-sm text-vault-text">Time booking only</p>
+              <p className="text-xs text-vault-text-muted">
+                Hide from board -- this task is only for logging hours
+              </p>
+            </div>
+          </label>
 
           {/* Source */}
           {form.source && (

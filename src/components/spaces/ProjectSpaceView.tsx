@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { parseTimeInput, formatHours } from "@/lib/time";
 import {
   ArrowLeft,
   LayoutGrid,
@@ -184,10 +185,12 @@ export function ProjectSpaceView() {
 
   const handleBookHours = useCallback(async () => {
     if (!space || !bookHours) return;
+    const parsed = parseTimeInput(bookHours);
+    if (parsed === null || parsed <= 0) return;
     const entry: TimeEntry = {
       id: `time_${Date.now()}`,
       date: new Date().toISOString().split("T")[0],
-      hours: parseFloat(bookHours) || 0,
+      hours: Math.round(parsed * 100) / 100,
       description: bookDesc,
     };
     const updated = { ...space, timeEntries: [...(space.timeEntries || []), entry] };
@@ -347,13 +350,11 @@ export function ProjectSpaceView() {
               </h3>
               <div className="flex gap-2">
                 <input
-                  type="number"
-                  min="0"
-                  step="0.25"
+                  type="text"
                   value={bookHours}
                   onChange={(e) => setBookHours(e.target.value)}
-                  placeholder="Hours"
-                  className="input-base w-20 text-sm"
+                  placeholder="1h30m, 45m, 2h..."
+                  className="input-base w-28 text-sm"
                 />
                 <input
                   type="text"
@@ -365,17 +366,20 @@ export function ProjectSpaceView() {
                 />
                 <button
                   onClick={handleBookHours}
-                  disabled={!bookHours}
+                  disabled={!bookHours || parseTimeInput(bookHours) === null}
                   className="btn-primary text-xs px-3 disabled:opacity-50"
                 >
                   Log
                 </button>
               </div>
+              <p className="text-[9px] text-vault-text-muted mt-1">
+                Formats: 45m, 1h, 1h30m, 1.5, 0:45
+              </p>
               {(space.timeEntries || []).length > 0 && (
                 <div className="mt-3 space-y-1 max-h-32 overflow-y-auto">
                   {[...(space.timeEntries || [])].reverse().slice(0, 5).map((e) => (
                     <div key={e.id} className="flex items-center gap-2 text-[10px] text-vault-text-muted">
-                      <span className="text-vault-text font-medium">{e.hours}h</span>
+                      <span className="text-vault-text font-medium">{formatHours(e.hours)}</span>
                       <span className="truncate flex-1">{e.description || "No description"}</span>
                       <span>{e.date}</span>
                     </div>

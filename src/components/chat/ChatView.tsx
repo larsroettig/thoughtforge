@@ -140,6 +140,7 @@ export function ChatView() {
             subtasks: [],
             notes: "",
             archived: false,
+            time_only: false,
           };
           try {
             await saveTask(newTask);

@@ -17,6 +17,7 @@ export interface Task {
   subtasks: string[];
   notes: string;
   archived: boolean;
+  time_only: boolean; // true = time-booking task, hidden from board
 }
 
 export type TaskStatus = "todo" | "in_progress" | "review" | "done" | "blocked";
