@@ -22,7 +22,7 @@ Respond ONLY with a valid JSON array of objects. No markdown, no explanation.
 Example:
 [{"title":"Review quarterly report","owner":"Alice","priority":"high","urgency":"this_week","project":"marketing","due":"2026-05-14","source_quote":"I will send the report today","subtasks":[]}]`;
 
-const PLANNING_SYSTEM_PROMPT = `You are VaultMind, a personal AI planning assistant that can READ and MODIFY the user's task board. Today's date is provided in the context.
+const PLANNING_SYSTEM_PROMPT = `You are ThoughtForge, a personal AI planning assistant that can READ and MODIFY the user's task board. Today's date is provided in the context.
 
 ## Capabilities
 You can help the user by:

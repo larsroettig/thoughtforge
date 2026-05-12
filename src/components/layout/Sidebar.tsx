@@ -106,7 +106,7 @@ export function Sidebar() {
       <div className="px-4 pt-4 pb-3 border-b border-vault-border">
         <div className="flex items-center gap-2">
           <Brain className="w-5 h-5 text-vault-purple" />
-          <h1 className="text-base font-bold text-vault-text-bright">VaultMind</h1>
+          <h1 className="text-base font-bold text-vault-text-bright">ThoughtForge</h1>
         </div>
       </div>
 

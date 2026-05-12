@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 fn vault_dir() -> PathBuf {
     let home = dirs_next().unwrap_or_else(|| PathBuf::from("."));
-    home.join("Documents").join("VaultMind")
+    home.join("Documents").join("ThoughtForge")
 }
 
 fn dirs_next() -> Option<PathBuf> {
@@ -428,7 +428,7 @@ title: "Implement search feature"
 status: in_progress
 priority: high
 urgency: this_week
-project: vaultmind
+project: testproject
 owner: lars
 source: "meeting-notes"
 source_quote: "We need search ASAP"
@@ -447,7 +447,7 @@ archived: false"#,
         assert_eq!(task.status, "in_progress");
         assert_eq!(task.priority, "high");
         assert_eq!(task.urgency, "this_week");
-        assert_eq!(task.project, "vaultmind");
+        assert_eq!(task.project, "testproject");
         assert_eq!(task.owner, "lars");
         assert_eq!(task.source, "meeting-notes");
         assert_eq!(task.source_quote, "We need search ASAP");

@@ -11,7 +11,7 @@
     {
       "identifier": "fs:default",
       "allow": [
-        { "path": "$HOME/Documents/VaultMind/**" },
+        { "path": "$HOME/Documents/ThoughtForge/**" },
         { "path": "$HOME/Documents/Audio Hijack/**" },
         { "path": "$HOME/**" }
       ]

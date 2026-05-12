@@ -18,7 +18,7 @@ function applyTheme(resolved: "light" | "dark") {
 
 export function useTheme() {
   const [theme, setThemeState] = useState<Theme>(() => {
-    const saved = localStorage.getItem("vaultmind-theme");
+    const saved = localStorage.getItem("thoughtforge-theme");
     return (saved as Theme) || "system";
   });
 
@@ -26,7 +26,7 @@ export function useTheme() {
 
   const setTheme = useCallback((t: Theme) => {
     setThemeState(t);
-    localStorage.setItem("vaultmind-theme", t);
+    localStorage.setItem("thoughtforge-theme", t);
     const r = t === "system" ? getSystemTheme() : t;
     applyTheme(r);
   }, []);

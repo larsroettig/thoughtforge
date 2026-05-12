@@ -1,12 +1,12 @@
 [package]
-name = "vaultmind"
+name = "thoughtforge"
 version = "0.1.0"
-description = "VaultMind - Personal AI Planning Assistant"
-authors = ["VaultMind Contributors"]
+description = "ThoughtForge - Local-First AI Planning Assistant"
+authors = ["ThoughtForge Contributors"]
 edition = "2021"
 
 [lib]
-name = "vaultmind_lib"
+name = "thoughtforge_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

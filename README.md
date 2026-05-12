@@ -1,8 +1,6 @@
-# VaultMind
+# ThoughtForge
 
 A local-first AI planning assistant for macOS. Extracts action items from meeting transcripts, manages tasks on a kanban board, and uses a local LLM (via LM Studio) for smart planning -- all without sending data to the cloud.
-
-> **Note:** The name "VaultMind" is a working title. See [Brand Status](#brand-status) below.
 
 ## Features
 
@@ -31,10 +29,10 @@ A local-first AI planning assistant for macOS. Extracts action items from meetin
 
 ### Storage
 
-All data lives as plain markdown files in `~/Documents/VaultMind/`:
+All data lives as plain markdown files in `~/Documents/ThoughtForge/`:
 
 ```
-~/Documents/VaultMind/
+~/Documents/ThoughtForge/
   tasks/          # Individual task .md files
   projects/       # Project notes
   boards/         # Board configuration
@@ -75,8 +73,8 @@ Additional notes here.
 ## Setup
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/vaultmind.git
-cd vaultmind
+git clone https://github.com/YOUR_USERNAME/thoughtforge.git
+cd thoughtforge
 npm install
 ```
 
@@ -95,24 +93,24 @@ npm run tauri build
 ```
 
 Produces:
-- `src-tauri/target/release/bundle/macos/VaultMind.app`
-- `src-tauri/target/release/bundle/dmg/VaultMind_0.1.0_aarch64.dmg`
+- `src-tauri/target/release/bundle/macos/ThoughtForge.app`
+- `src-tauri/target/release/bundle/dmg/ThoughtForge_0.1.0_aarch64.dmg`
 
 ### Install
 
 ```bash
-cp -R src-tauri/target/release/bundle/macos/VaultMind.app /Applications/
+cp -R src-tauri/target/release/bundle/macos/ThoughtForge.app /Applications/
 ```
 
 ## Configuration
 
-On first launch, the app creates `~/Documents/VaultMind/` and a default `config.yaml`.
+On first launch, the app creates `~/Documents/ThoughtForge/` and a default `config.yaml`.
 
 ### LM Studio
 
 1. Install and open [LM Studio](https://lmstudio.ai)
 2. Load a model: `lms load qwen2.5-7b-instruct` (7B+ for chat, 32B+ for extraction)
-3. In VaultMind Settings, verify the URL is `http://localhost:1234` and select your model
+3. In ThoughtForge Settings, verify the URL is `http://localhost:1234` and select your model
 
 ### Profile
 
@@ -155,16 +153,6 @@ npm test
 # Rust tests
 cd src-tauri && cargo test
 ```
-
-## Brand Status
-
-"VaultMind" is a **working title only**. Brand research found:
-
-- `vaultmind.com` is an active AI security product
-- 75+ GitHub repos use the name, including a local-first AI tool in the same space
-- The name should be changed before any public release
-
-The brain+vault logo concept is generic and not a concern on its own.
 
 ## License
 
