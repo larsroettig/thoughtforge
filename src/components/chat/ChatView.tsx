@@ -86,6 +86,15 @@ export function ChatView() {
       const currentTasks = useAppStore.getState().tasks;
 
       return actions.map((action) => {
+        if (action.type === "create_task") {
+          // For create_task, there's no existing task to match
+          return {
+            action,
+            task: null, // null means "will create new"
+            label: `Create task: "${action.titleMatch}" (${action.project || "general"}, ${action.priority || "medium"})`,
+          };
+        }
+
         const task = findTaskByTitle(currentTasks, action.titleMatch);
         const typeLabels: Record<string, string> = {
           set_due: "Set due date",
@@ -110,6 +119,40 @@ export function ChatView() {
       const results: ActionResult[] = [];
 
       for (const p of pending) {
+        // Handle create_task
+        if (p.action.type === "create_task") {
+          const newTask: Task = {
+            id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+            title: p.action.titleMatch,
+            status: "todo",
+            priority: (p.action.priority as Task["priority"]) || "medium",
+            urgency: "ongoing",
+            project: p.action.project || "general",
+            owner: p.action.owner || "",
+            collaborators: [],
+            source: "chat",
+            source_quote: "",
+            created: new Date().toISOString().split("T")[0],
+            due: "",
+            estimated_hours: 0,
+            actual_hours: 0,
+            blocked_by: [],
+            subtasks: [],
+            notes: "",
+            archived: false,
+          };
+          try {
+            await saveTask(newTask);
+            results.push({ action: p.action, taskTitle: newTask.title, success: true });
+          } catch {
+            results.push({ action: p.action, taskTitle: newTask.title, success: false });
+          }
+          // Small delay so IDs don't collide
+          await new Promise((r) => setTimeout(r, 15));
+          continue;
+        }
+
+        // Modify existing task
         if (!p.task) {
           results.push({ action: p.action, taskTitle: p.action.titleMatch, success: false });
           continue;
@@ -141,11 +184,17 @@ export function ChatView() {
 
         if (Object.keys(updates).length > 0) {
           updateTask(p.task.id, updates);
-          const updated = { ...p.task, ...updates };
+          // Ensure all fields present when saving
+          const fullTask: Task = {
+            ...p.task,
+            archived: p.task.archived ?? false,
+            ...updates,
+          };
           try {
-            await saveTask(updated);
+            await saveTask(fullTask);
             results.push({ action: p.action, taskTitle: p.task.title, success: true });
-          } catch {
+          } catch (err) {
+            console.error("Failed to save task:", p.task.id, err);
             results.push({ action: p.action, taskTitle: p.task.title, success: false });
           }
         }
@@ -153,8 +202,6 @@ export function ChatView() {
 
       setActionResults(results);
       setPendingActions([]);
-
-      // Auto-clear results after 8 seconds
       setTimeout(() => setActionResults([]), 8000);
     },
     [updateTask, saveTask]
@@ -482,28 +529,41 @@ export function ChatView() {
                 </p>
 
                 <div className="space-y-1.5 mb-4">
-                  {pendingActions.map((p, i) => (
+                  {pendingActions.map((p, i) => {
+                    const isCreate = p.action.type === "create_task";
+                    const isNotFound = !isCreate && !p.task;
+                    return (
                     <div
                       key={i}
                       className={`flex items-start gap-2 text-xs px-3 py-2 rounded-lg ${
-                        p.task
-                          ? "bg-vault-bg text-vault-text"
-                          : "bg-vault-critical/10 text-vault-critical"
+                        isCreate
+                          ? "bg-vault-success/10 text-vault-text"
+                          : isNotFound
+                          ? "bg-vault-critical/10 text-vault-critical"
+                          : "bg-vault-bg text-vault-text"
                       }`}
                     >
-                      <Zap className="w-3 h-3 mt-0.5 flex-shrink-0 text-vault-warning" />
+                      <Zap className={`w-3 h-3 mt-0.5 flex-shrink-0 ${isCreate ? "text-vault-success" : "text-vault-warning"}`} />
                       <div className="flex-1 min-w-0">
                         <span className="font-medium">
-                          {p.action.type.replace("set_", "").replace("_", " ")}
+                          {isCreate ? "New task" : p.action.type.replace("set_", "").replace("_", " ")}
                         </span>
-                        {" -> "}
-                        <span className="text-vault-accent">{p.action.value || "archive"}</span>
+                        {isCreate ? ": " : " -> "}
+                        <span className="text-vault-accent">
+                          {isCreate ? `"${p.action.titleMatch}"` : (p.action.value || "archive")}
+                        </span>
                         <div className="text-[10px] text-vault-text-muted mt-0.5 truncate">
-                          {p.task ? `"${p.task.title}"` : `"${p.action.titleMatch}" (task not found)`}
+                          {isCreate
+                            ? `project: ${p.action.project || "general"}, priority: ${p.action.priority || "medium"}${p.action.owner ? `, owner: ${p.action.owner}` : ""}`
+                            : p.task
+                            ? `"${p.task.title}"`
+                            : `"${p.action.titleMatch}" (task not found)`
+                          }
                         </div>
                       </div>
                     </div>
-                  ))}
+                  );
+                  })}
                 </div>
 
                 <div className="flex gap-2">

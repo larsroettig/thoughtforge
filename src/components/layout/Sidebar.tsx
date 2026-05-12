@@ -14,6 +14,7 @@ import {
   Plus,
   Pencil,
   Trash2,
+  BarChart3,
 } from "lucide-react";
 import { CreateSpaceModal as CreateSpaceModalInline } from "@/components/spaces/CreateSpaceModal";
 import { useAppStore } from "@/stores/appStore";
@@ -24,6 +25,7 @@ import { PROJECT_COLORS } from "@/types";
 const NAV_ITEMS: { id: AppView; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "dashboard", label: "Dashboard", icon: Gauge },
   { id: "board", label: "Board", icon: LayoutDashboard },
+  { id: "stats", label: "Weekly Review", icon: BarChart3 },
   { id: "chat", label: "Chat", icon: MessageSquare },
   { id: "documents", label: "Documents", icon: FileText },
   { id: "archive", label: "Archive", icon: Archive },

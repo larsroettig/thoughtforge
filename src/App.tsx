@@ -4,6 +4,7 @@ import { StatusBar } from "@/components/layout/StatusBar";
 import { DashboardView } from "@/components/board/DashboardView";
 import { KanbanBoard } from "@/components/board/KanbanBoard";
 import { ArchiveView } from "@/components/board/ArchiveView";
+import { StatsView } from "@/components/board/StatsView";
 import { ProjectSpaceView } from "@/components/spaces/ProjectSpaceView";
 import { ChatView } from "@/components/chat/ChatView";
 import { DocumentsView } from "@/components/documents/DocumentsView";
@@ -87,6 +88,8 @@ function App() {
         return <KanbanBoard />;
       case "archive":
         return <ArchiveView />;
+      case "stats":
+        return <StatsView />;
       case "project-space":
         return <ProjectSpaceView />;
       case "chat":

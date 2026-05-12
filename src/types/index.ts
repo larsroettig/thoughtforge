@@ -143,7 +143,7 @@ export interface SpaceNote {
   tags: string[];
 }
 
-export type AppView = "dashboard" | "board" | "chat" | "documents" | "settings" | "archive" | "project-space";
+export type AppView = "dashboard" | "board" | "chat" | "documents" | "settings" | "archive" | "project-space" | "stats";
 
 export type ProjectSpaceTab = "overview" | "documents" | "notes" | "meetings" | "tasks" | "knowledge";
 

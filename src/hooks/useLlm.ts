@@ -42,14 +42,28 @@ When the user asks you to change something on a task, you MUST include action bl
 
 The task_title_substring is a unique part of the task title (case-insensitive match). Use enough of the title to uniquely identify it.
 
+## How to create NEW tasks
+When the user asks you to create a task, add a to-do, or when planning suggests new work:
+
+[[ACTION: create_task | Task Title | project_id | priority | owner]]
+
+- project_id: lowercase hyphenated project name (e.g. "hackathon", "ai-team"), or "general" if unsure
+- priority: critical/high/medium/low
+- owner: name of the person, or empty if unassigned
+
 Examples:
+- User: "create a task to review the contract" -> [[ACTION: create_task | Review the contract | general | medium | ]]
+- User: "add a high priority task for the hackathon demo" -> [[ACTION: create_task | Prepare hackathon demo | hackathon | high | ]]
+- User: "remind me to book flights" -> [[ACTION: create_task | Book flights | personal | medium | ]]
+
+## Examples for modifying tasks:
 - User: "set quarterly report to high priority" -> [[ACTION: set_priority | quarterly report | high]]
 - User: "make the review task due today" -> [[ACTION: set_due | review task | 2026-05-12]]
 - User: "mark design mockup as in progress" -> [[ACTION: set_status | design mockup | in_progress]]
 - User: "assign the Jira task to Bob" -> [[ACTION: set_owner | Jira | Bob]]
 
 ## Planning with actions
-When planning a day or week, you can SET DUE DATES on tasks to schedule them:
+When planning a day or week, use set_due on EXISTING tasks. Create new tasks only if the user explicitly asks.
 
 When the user asks to plan their day (/plan-day):
 1. Look at overdue, due-today, and high-priority tasks
@@ -64,16 +78,21 @@ When the user asks to plan their week (/plan-week):
 4. Present the day-by-day plan
 
 IMPORTANT:
-- Always include [[ACTION:...]] blocks when modifying tasks
+- Always include [[ACTION:...]] blocks when modifying or creating tasks
 - Put actions AFTER your explanation text, not before
 - You can include multiple actions in one response
 - Always confirm what you changed in your text response
-- If you can't find a matching task, say so instead of guessing`;
+- If you can't find a matching task, say so instead of guessing
+- For create_task: the task is created as "todo" status with urgency "ongoing" and due date empty`;
 
 export interface TaskAction {
-  type: "set_due" | "set_priority" | "set_status" | "set_owner" | "archive";
+  type: "set_due" | "set_priority" | "set_status" | "set_owner" | "archive" | "create_task";
   titleMatch: string;
   value: string;
+  // For create_task: extra fields parsed from the action
+  project?: string;
+  priority?: string;
+  owner?: string;
 }
 
 export function parseActions(text: string): { cleanText: string; actions: TaskAction[] } {
@@ -82,6 +101,21 @@ export function parseActions(text: string): { cleanText: string; actions: TaskAc
   const cleanLines: string[] = [];
 
   for (const line of lines) {
+    // Match create_task: [[ACTION: create_task | Title | project | priority | owner]]
+    const createMatch = line.match(/\[\[ACTION:\s*create_task\s*\|\s*([^|]+?)\s*\|\s*([^|]*?)\s*\|\s*([^|]*?)\s*\|\s*([^|\]]*?)\s*\]\]/i);
+    if (createMatch) {
+      actions.push({
+        type: "create_task",
+        titleMatch: createMatch[1].trim(),
+        value: createMatch[1].trim(), // title is the value for display
+        project: createMatch[2].trim() || "general",
+        priority: createMatch[3].trim() || "medium",
+        owner: createMatch[4].trim() || "",
+      });
+      continue;
+    }
+
+    // Match modify actions: [[ACTION: type | title | value]]
     const match = line.match(/\[\[ACTION:\s*(set_due|set_priority|set_status|set_owner|archive)\s*\|\s*([^|]+?)\s*(?:\|\s*(.+?))?\s*\]\]/i);
     if (match) {
       actions.push({
