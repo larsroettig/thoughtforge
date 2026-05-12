@@ -209,6 +209,7 @@ export function ChatView() {
           const fullTask: Task = {
             ...p.task,
             archived: p.task.archived ?? false,
+            time_only: p.task.time_only ?? false,
             ...updates,
           };
           try {
@@ -554,10 +555,11 @@ export function ChatView() {
                     const isCreate = p.action.type === "create_task" && !p.task;
                     const isDuplicate = p.action.type === "create_task" && p.task;
                     const isNotFound = !isCreate && !isDuplicate && !p.task;
+                    const canApply = !isDuplicate && !isNotFound;
                     return (
                     <div
                       key={i}
-                      className={`flex items-start gap-2 text-xs px-3 py-2 rounded-lg ${
+                      className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg ${
                         isDuplicate
                           ? "bg-vault-warning/10 text-vault-warning line-through opacity-60"
                           : isCreate
@@ -567,24 +569,42 @@ export function ChatView() {
                           : "bg-vault-bg text-vault-text"
                       }`}
                     >
-                      <Zap className={`w-3 h-3 mt-0.5 flex-shrink-0 ${isCreate ? "text-vault-success" : "text-vault-warning"}`} />
+                      <Zap className={`w-3 h-3 flex-shrink-0 ${isCreate ? "text-vault-success" : "text-vault-warning"}`} />
                       <div className="flex-1 min-w-0">
                         <span className="font-medium">
                           {isCreate ? "New task" : p.action.type.replace("set_", "").replace("_", " ")}
                         </span>
-                        {isCreate ? ": " : " -> "}
+                        {isCreate ? ": " : " \u2192 "}
                         <span className="text-vault-accent">
                           {isCreate ? `"${p.action.titleMatch}"` : (p.action.value || "archive")}
                         </span>
                         <div className="text-[10px] text-vault-text-muted mt-0.5 truncate">
                           {isCreate
-                            ? `project: ${p.action.project || "general"}, priority: ${p.action.priority || "medium"}${p.action.owner ? `, owner: ${p.action.owner}` : ""}`
+                            ? `project: ${p.action.project || "general"}, ${p.action.priority || "medium"}`
+                            : isDuplicate
+                            ? `exists as "${p.task?.title}"`
                             : p.task
                             ? `"${p.task.title}"`
-                            : `"${p.action.titleMatch}" (task not found)`
+                            : `"${p.action.titleMatch}" not found`
                           }
                         </div>
                       </div>
+                      {/* Per-action Apply button */}
+                      {canApply && (
+                        <button
+                          onClick={() => applyActions([p])}
+                          className="flex-shrink-0 text-[10px] bg-vault-accent/10 text-vault-accent px-2 py-1 rounded hover:bg-vault-accent/20 font-medium"
+                        >
+                          Apply
+                        </button>
+                      )}
+                      {/* Per-action Skip */}
+                      <button
+                        onClick={() => setPendingActions((prev) => prev.filter((_, j) => j !== i))}
+                        className="flex-shrink-0 text-[10px] text-vault-text-muted px-1.5 py-1 rounded hover:bg-vault-card"
+                      >
+                        Skip
+                      </button>
                     </div>
                   );
                   })}
@@ -592,18 +612,23 @@ export function ChatView() {
 
                 <div className="flex gap-2">
                   <button
-                    onClick={() => applyActions(pendingActions)}
+                    onClick={() => applyActions(pendingActions.filter((p) => {
+                      const isCreate = p.action.type === "create_task" && !p.task;
+                      const isDuplicate = p.action.type === "create_task" && p.task;
+                      const isNotFound = !isCreate && !isDuplicate && !p.task;
+                      return !isDuplicate && !isNotFound;
+                    }))}
                     className="btn-primary text-xs px-4 py-2 flex items-center gap-1.5"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />
-                    Apply All ({pendingActions.filter((p) => p.task).length} changes)
+                    Apply All
                   </button>
                   <button
                     onClick={handleRejectActions}
                     className="btn-ghost text-xs px-4 py-2 flex items-center gap-1.5 text-vault-critical"
                   >
                     <XCircle className="w-3.5 h-3.5" />
-                    Reject
+                    Reject All
                   </button>
                 </div>
               </div>
