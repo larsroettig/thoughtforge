@@ -40,7 +40,6 @@ function App() {
             created: new Date().toISOString().split("T")[0],
             archived: false,
             documents: [],
-            notes: [],
             timeEntries: [],
           };
           useAppStore.getState().addProjectSpace(generalSpace);
@@ -61,7 +60,6 @@ function App() {
             created: new Date().toISOString().split("T")[0],
             archived: false,
             documents: [],
-            notes: [],
             timeEntries: [],
           };
           useAppStore.getState().addProjectSpace(newSpace);

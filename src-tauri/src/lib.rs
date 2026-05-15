@@ -1,6 +1,7 @@
 mod watcher;
 mod llm;
 mod vault;
+mod search;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -18,19 +19,25 @@ pub fn run() {
             vault::read_tasks,
             vault::write_task,
             vault::delete_task,
-            vault::read_projects,
             vault::read_config,
             vault::write_config,
             vault::list_uploads,
             vault::read_file_content,
+            vault::get_system_info,
             vault::read_spaces,
             vault::write_space,
             vault::delete_space,
+            vault::read_space_notes,
+            vault::write_space_note,
+            vault::delete_space_note,
             watcher::start_watching,
             watcher::stop_watching,
             llm::list_models,
             llm::chat_completion,
             llm::stream_chat,
+            search::index_space_notes,
+            search::search_space_notes,
+            search::space_index_status,
         ])
         .setup(|app| {
             #[cfg(desktop)]

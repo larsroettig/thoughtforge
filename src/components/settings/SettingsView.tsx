@@ -21,6 +21,7 @@ import { useAppStore } from "@/stores/appStore";
 import { useVault } from "@/hooks/useVault";
 import { useLlm } from "@/hooks/useLlm";
 import { useTheme, type Theme } from "@/hooks/useTheme";
+import { ModelRecommendations } from "./ModelRecommendations";
 import { DEFAULT_STATUS_COLORS, STATUS_LABELS } from "@/types";
 import type { TaskStatus, StatusColors } from "@/types";
 import { SUPPORTED_COUNTRIES } from "@/lib/holidays";
@@ -223,6 +224,18 @@ export function SettingsView() {
               )}
             </div>
           </div>
+        </section>
+
+        {/* Model Recommendations */}
+        <section className="space-y-4">
+          <h3 className="text-sm font-semibold text-vault-text uppercase tracking-wide flex items-center gap-2">
+            <Cpu className="w-4 h-4 text-vault-accent" />
+            Model Recommendations
+          </h3>
+          <p className="text-xs text-vault-text-muted -mt-2">
+            Based on your system RAM. Copy the search term and paste it into LM Studio's model browser, or use the CLI command.
+          </p>
+          <ModelRecommendations />
         </section>
 
         {/* Profile */}

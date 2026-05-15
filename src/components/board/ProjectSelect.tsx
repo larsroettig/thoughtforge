@@ -94,7 +94,6 @@ export function ProjectSelect({ value, onChange }: ProjectSelectProps) {
       created: new Date().toISOString().split("T")[0],
       archived: false,
       documents: [],
-      notes: [],
       timeEntries: [],
     };
     addProjectSpace(newSpace);

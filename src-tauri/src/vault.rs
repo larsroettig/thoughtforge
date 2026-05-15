@@ -2,13 +2,71 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
-fn vault_dir() -> PathBuf {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SystemInfo {
+    /// Total physical RAM in gigabytes (rounded down).
+    pub total_ram_gb: u64,
+    /// CPU architecture: "aarch64" (Apple Silicon / ARM) or "x86_64" (Intel/AMD).
+    pub cpu_arch: String,
+}
+
+#[tauri::command]
+pub fn get_system_info() -> SystemInfo {
+    use sysinfo::System;
+    let sys = System::new_all();
+    let total_ram_gb = sys.total_memory() / 1_073_741_824;
+    let cpu_arch = std::env::consts::ARCH.to_string();
+    SystemInfo { total_ram_gb, cpu_arch }
+}
+
+pub fn vault_dir() -> PathBuf {
     let home = dirs_next().unwrap_or_else(|| PathBuf::from("."));
     home.join("Documents").join("ThoughtForge")
 }
 
 fn dirs_next() -> Option<PathBuf> {
     std::env::var("HOME").ok().map(PathBuf::from)
+}
+
+fn spaces_dir() -> PathBuf {
+    vault_dir().join("spaces")
+}
+
+pub fn space_dir(id: &str) -> PathBuf {
+    spaces_dir().join(id)
+}
+
+/// Read config without going through the Tauri command layer.
+pub fn vault_config() -> VaultConfig {
+    let config_path = vault_dir().join("config.yaml");
+    if !config_path.exists() {
+        return VaultConfig::default();
+    }
+    let content = fs::read_to_string(&config_path).unwrap_or_default();
+    serde_json::from_str(&content).unwrap_or_default()
+}
+
+/// Read notes for a space — shared logic for both the Tauri command and search indexer.
+pub fn read_space_notes_internal(space_id: &str) -> Result<Vec<NoteData>, String> {
+    let notes_dir = space_dir(space_id).join("notes");
+    if !notes_dir.exists() {
+        return Ok(vec![]);
+    }
+    let mut notes = Vec::new();
+    let entries = fs::read_dir(&notes_dir)
+        .map_err(|e| format!("Failed to read notes dir: {}", e))?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("md") {
+            continue;
+        }
+        let content = fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+        if let Some(note) = parse_note_markdown(&content) {
+            notes.push(note);
+        }
+    }
+    Ok(notes)
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -36,11 +94,15 @@ pub struct TaskData {
     pub time_only: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ProjectData {
-    pub name: String,
-    pub filename: String,
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct NoteData {
+    pub id: String,
+    pub title: String,
+    #[serde(rename = "type")]
+    pub note_type: String,
+    pub date: String,
     pub content: String,
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -112,12 +174,8 @@ pub fn init_vault() -> Result<String, String> {
     let base = vault_dir();
     let dirs = [
         "boards",
-        "projects",
-        "tasks",
         "uploads/transcripts",
         "uploads/documents",
-        "chats",
-        "templates",
         "spaces",
     ];
 
@@ -126,7 +184,6 @@ pub fn init_vault() -> Result<String, String> {
         fs::create_dir_all(&path).map_err(|e| format!("Failed to create {}: {}", dir, e))?;
     }
 
-    // Create default config if not exists
     let config_path = base.join("config.yaml");
     if !config_path.exists() {
         let config = VaultConfig::default();
@@ -136,7 +193,6 @@ pub fn init_vault() -> Result<String, String> {
             .map_err(|e| format!("Failed to write config: {}", e))?;
     }
 
-    // Create default kanban board if not exists
     let board_path = base.join("boards").join("kanban.md");
     if !board_path.exists() {
         let default_board = r#"---
@@ -164,37 +220,67 @@ filters: []
     Ok(base.to_string_lossy().to_string())
 }
 
+// ── Tasks ────────────────────────────────────────────────────────────────
+
+fn find_task_path(id: &str) -> Option<PathBuf> {
+    let sd = spaces_dir();
+    if let Ok(entries) = fs::read_dir(&sd) {
+        for entry in entries.flatten() {
+            if entry.path().is_dir() {
+                let p = entry.path().join("tasks").join(format!("{}.md", id));
+                if p.exists() {
+                    return Some(p);
+                }
+            }
+        }
+    }
+    None
+}
+
 #[tauri::command]
 pub fn read_tasks() -> Result<Vec<TaskData>, String> {
-    let tasks_dir = vault_dir().join("tasks");
-    if !tasks_dir.exists() {
-        return Ok(vec![]);
-    }
-
     let mut tasks = Vec::new();
-    let entries = fs::read_dir(&tasks_dir)
-        .map_err(|e| format!("Failed to read tasks dir: {}", e))?;
 
-    for entry in entries {
-        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("md") {
-            continue;
-        }
-
-        let content = fs::read_to_string(&path)
-            .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
-
-        if let Some(task) = parse_task_markdown(&content) {
-            tasks.push(task);
+    // Read from each space's tasks/ directory
+    let sd = spaces_dir();
+    if sd.exists() {
+        if let Ok(entries) = fs::read_dir(&sd) {
+            for entry in entries.flatten() {
+                if entry.path().is_dir() {
+                    let space_tasks = entry.path().join("tasks");
+                    if space_tasks.exists() {
+                        read_tasks_from_dir(&space_tasks, &mut tasks)?;
+                    }
+                }
+            }
         }
     }
 
     Ok(tasks)
 }
 
+fn read_tasks_from_dir(dir: &std::path::Path, tasks: &mut Vec<TaskData>) -> Result<(), String> {
+    if !dir.exists() {
+        return Ok(());
+    }
+    let entries = fs::read_dir(dir)
+        .map_err(|e| format!("Failed to read tasks dir {}: {}", dir.display(), e))?;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("md") {
+            continue;
+        }
+        let content = fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+        if let Some(task) = parse_task_markdown(&content) {
+            tasks.push(task);
+        }
+    }
+    Ok(())
+}
+
 fn parse_task_markdown(content: &str) -> Option<TaskData> {
-    // Parse YAML frontmatter between --- delimiters
     let parts: Vec<&str> = content.splitn(3, "---").collect();
     if parts.len() < 3 {
         return None;
@@ -257,11 +343,6 @@ fn parse_task_markdown(content: &str) -> Option<TaskData> {
                 _ => {}
             }
         }
-        // Parse array fields (simple YAML arrays)
-        if line.starts_with("- ") && !line.starts_with("---") {
-            // This is handled by checking context of what array we're in
-            // For simplicity, subtasks and collaborators are parsed from notes section
-        }
     }
 
     if task.id.is_empty() {
@@ -273,12 +354,19 @@ fn parse_task_markdown(content: &str) -> Option<TaskData> {
 
 #[tauri::command]
 pub fn write_task(task: TaskData) -> Result<(), String> {
-    let tasks_dir = vault_dir().join("tasks");
-    fs::create_dir_all(&tasks_dir)
+    // Resolve target directory:
+    //   - task has a project → spaces/{project}/tasks/  (create if needed)
+    //   - no project         → spaces/general/tasks/    (create if needed)
+    let target_dir = if !task.project.is_empty() {
+        space_dir(&task.project).join("tasks")
+    } else {
+        space_dir("general").join("tasks")
+    };
+
+    fs::create_dir_all(&target_dir)
         .map_err(|e| format!("Failed to create tasks dir: {}", e))?;
 
-    let filename = format!("{}.md", task.id);
-    let path = tasks_dir.join(&filename);
+    let path = target_dir.join(format!("{}.md", task.id));
 
     let collaborators_str = if task.collaborators.is_empty() {
         "[]".to_string()
@@ -353,49 +441,14 @@ subtasks:
 
 #[tauri::command]
 pub fn delete_task(id: String) -> Result<(), String> {
-    let path = vault_dir().join("tasks").join(format!("{}.md", id));
-    if path.exists() {
+    if let Some(path) = find_task_path(&id) {
         fs::remove_file(&path)
             .map_err(|e| format!("Failed to delete task: {}", e))?;
     }
     Ok(())
 }
 
-#[tauri::command]
-pub fn read_projects() -> Result<Vec<ProjectData>, String> {
-    let projects_dir = vault_dir().join("projects");
-    if !projects_dir.exists() {
-        return Ok(vec![]);
-    }
-
-    let mut projects = Vec::new();
-    let entries = fs::read_dir(&projects_dir)
-        .map_err(|e| format!("Failed to read projects dir: {}", e))?;
-
-    for entry in entries {
-        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("md") {
-            continue;
-        }
-
-        let content = fs::read_to_string(&path)
-            .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
-        let name = path
-            .file_stem()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_string();
-
-        projects.push(ProjectData {
-            name,
-            filename: path.file_name().unwrap_or_default().to_string_lossy().to_string(),
-            content,
-        });
-    }
-
-    Ok(projects)
-}
+// ── Config ───────────────────────────────────────────────────────────────
 
 #[tauri::command]
 pub fn read_config() -> Result<VaultConfig, String> {
@@ -423,6 +476,8 @@ pub fn write_config(config: VaultConfig) -> Result<(), String> {
     Ok(())
 }
 
+// ── Uploads ──────────────────────────────────────────────────────────────
+
 #[tauri::command]
 pub fn list_uploads() -> Result<Vec<String>, String> {
     let mut files = Vec::new();
@@ -435,8 +490,7 @@ pub fn list_uploads() -> Result<Vec<String>, String> {
         let entries = fs::read_dir(dir)
             .map_err(|e| format!("Failed to read dir: {}", e))?;
 
-        for entry in entries {
-            let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+        for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
                 walk_dir(&path, files)?;
@@ -457,32 +511,42 @@ pub fn read_file_content(path: String) -> Result<String, String> {
         .map_err(|e| format!("Failed to read file {}: {}", path, e))
 }
 
-// ── Project Spaces ──────────────────────────────────────────────────────
+// ── Project Spaces ───────────────────────────────────────────────────────
+
+fn ensure_space_dirs(id: &str) -> Result<(), String> {
+    let dir = space_dir(id);
+    fs::create_dir_all(dir.join("notes"))
+        .map_err(|e| format!("Failed to create notes dir: {}", e))?;
+    fs::create_dir_all(dir.join("tasks"))
+        .map_err(|e| format!("Failed to create tasks dir: {}", e))?;
+    Ok(())
+}
 
 #[tauri::command]
 pub fn read_spaces() -> Result<Vec<serde_json::Value>, String> {
-    let spaces_dir = vault_dir().join("spaces");
-    if !spaces_dir.exists() {
+    let sd = spaces_dir();
+    if !sd.exists() {
         return Ok(vec![]);
     }
 
     let mut spaces = Vec::new();
-    let entries = fs::read_dir(&spaces_dir)
+    let entries = fs::read_dir(&sd)
         .map_err(|e| format!("Failed to read spaces dir: {}", e))?;
 
-    for entry in entries {
-        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+    for entry in entries.flatten() {
         let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+        if !path.is_dir() {
             continue;
         }
-
-        let content = fs::read_to_string(&path)
-            .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
-
+        let space_json = path.join("space.json");
+        if !space_json.exists() {
+            continue;
+        }
+        let content = fs::read_to_string(&space_json)
+            .map_err(|e| format!("Failed to read {}: {}", space_json.display(), e))?;
         match serde_json::from_str::<serde_json::Value>(&content) {
             Ok(val) => spaces.push(val),
-            Err(e) => eprintln!("Failed to parse {}: {}", path.display(), e),
+            Err(e) => eprintln!("Failed to parse {}: {}", space_json.display(), e),
         }
     }
 
@@ -491,21 +555,22 @@ pub fn read_spaces() -> Result<Vec<serde_json::Value>, String> {
 
 #[tauri::command]
 pub fn write_space(space: serde_json::Value) -> Result<(), String> {
-    let spaces_dir = vault_dir().join("spaces");
-    fs::create_dir_all(&spaces_dir)
-        .map_err(|e| format!("Failed to create spaces dir: {}", e))?;
-
     let id = space.get("id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Space must have an id".to_string())?;
 
-    let filename = format!("{}.json", id);
-    let path = spaces_dir.join(&filename);
+    ensure_space_dirs(id)?;
 
-    let content = serde_json::to_string_pretty(&space)
+    // Strip notes array — notes live as individual files
+    let mut meta = space.clone();
+    if let Some(obj) = meta.as_object_mut() {
+        obj.remove("notes");
+    }
+
+    let content = serde_json::to_string_pretty(&meta)
         .map_err(|e| format!("Failed to serialize space: {}", e))?;
 
-    fs::write(&path, content)
+    fs::write(space_dir(id).join("space.json"), content)
         .map_err(|e| format!("Failed to write space: {}", e))?;
 
     Ok(())
@@ -513,10 +578,99 @@ pub fn write_space(space: serde_json::Value) -> Result<(), String> {
 
 #[tauri::command]
 pub fn delete_space(id: String) -> Result<(), String> {
-    let path = vault_dir().join("spaces").join(format!("{}.json", id));
+    let dir = space_dir(&id);
+    if dir.exists() {
+        fs::remove_dir_all(&dir)
+            .map_err(|e| format!("Failed to delete space: {}", e))?;
+    }
+    Ok(())
+}
+
+// ── Space Notes ──────────────────────────────────────────────────────────
+
+fn note_to_markdown(note: &NoteData) -> String {
+    let tags = serde_json::to_string(&note.tags).unwrap_or_else(|_| "[]".to_string());
+    format!(
+        "---\nid: \"{}\"\ntitle: \"{}\"\ntype: {}\ndate: {}\ntags: {}\n---\n\n{}",
+        note.id,
+        note.title.replace('"', r#"\""#),
+        note.note_type,
+        note.date,
+        tags,
+        note.content,
+    )
+}
+
+fn parse_note_markdown(content: &str) -> Option<NoteData> {
+    let parts: Vec<&str> = content.splitn(3, "---").collect();
+    if parts.len() < 3 {
+        return None;
+    }
+
+    let frontmatter = parts[1].trim();
+    let body = parts[2].trim().to_string();
+
+    let mut note = NoteData {
+        id: String::new(),
+        title: String::new(),
+        note_type: "note".to_string(),
+        date: String::new(),
+        content: body,
+        tags: vec![],
+    };
+
+    for line in frontmatter.lines() {
+        let line = line.trim();
+        if let Some((key, value)) = line.split_once(':') {
+            let key = key.trim();
+            let value = value.trim();
+            match key {
+                "id" => note.id = value.trim_matches('"').to_string(),
+                "title" => note.title = value.trim_matches('"').to_string(),
+                "type" => note.note_type = value.trim_matches('"').to_string(),
+                "date" => note.date = value.trim_matches('"').to_string(),
+                "tags" => {
+                    if let Ok(tags) = serde_json::from_str::<Vec<String>>(value) {
+                        note.tags = tags;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    if note.id.is_empty() {
+        return None;
+    }
+
+    Some(note)
+}
+
+#[tauri::command]
+pub fn read_space_notes(space_id: String) -> Result<Vec<NoteData>, String> {
+    read_space_notes_internal(&space_id)
+}
+
+#[tauri::command]
+pub fn write_space_note(space_id: String, note: NoteData) -> Result<(), String> {
+    let notes_dir = space_dir(&space_id).join("notes");
+    fs::create_dir_all(&notes_dir)
+        .map_err(|e| format!("Failed to create notes dir: {}", e))?;
+
+    let path = notes_dir.join(format!("{}.md", note.id));
+    let content = note_to_markdown(&note);
+    fs::write(&path, content)
+        .map_err(|e| format!("Failed to write note: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_space_note(space_id: String, note_id: String) -> Result<(), String> {
+    let path = space_dir(&space_id).join("notes").join(format!("{}.md", note_id));
     if path.exists() {
         fs::remove_file(&path)
-            .map_err(|e| format!("Failed to delete space: {}", e))?;
+            .map_err(|e| format!("Failed to delete note: {}", e))?;
     }
     Ok(())
 }
@@ -525,12 +679,10 @@ pub fn delete_space(id: String) -> Result<(), String> {
 mod tests {
     use super::*;
 
-    /// Helper: build a full task markdown string from frontmatter and notes.
     fn task_md(frontmatter: &str, notes: &str) -> String {
         format!("---\n{}\n---\n\n{}", frontmatter, notes)
     }
 
-    // ── 1. Parse a valid task with full YAML frontmatter ────────────────
     #[test]
     fn parse_task_full_frontmatter() {
         let md = task_md(
@@ -570,7 +722,6 @@ archived: false"#,
         assert_eq!(task.notes, "Some detailed notes here.");
     }
 
-    // ── 2. Missing fields fall back to defaults ─────────────────────────
     #[test]
     fn parse_task_missing_fields_uses_defaults() {
         let md = task_md("id: task-minimal", "");
@@ -578,7 +729,6 @@ archived: false"#,
         let task = parse_task_markdown(&md).expect("should parse with only id");
 
         assert_eq!(task.id, "task-minimal");
-        // Defaults defined in parse_task_markdown
         assert_eq!(task.status, "todo");
         assert_eq!(task.priority, "medium");
         assert_eq!(task.urgency, "ongoing");
@@ -590,17 +740,12 @@ archived: false"#,
         assert!(!task.archived);
     }
 
-    // ── 3. Invalid frontmatter (no --- delimiters) returns None ─────────
     #[test]
     fn parse_task_invalid_frontmatter_returns_none() {
-        // No frontmatter delimiters at all
         assert!(parse_task_markdown("just some plain text").is_none());
-
-        // Only one delimiter
         assert!(parse_task_markdown("---\nid: abc\nno closing delimiter").is_none());
     }
 
-    // ── 4. Quoted values are properly unquoted ──────────────────────────
     #[test]
     fn parse_task_unquotes_values() {
         let md = task_md(
@@ -612,54 +757,60 @@ source: "some-source""#,
 
         let task = parse_task_markdown(&md).expect("should parse quoted values");
 
-        // trim_matches('"') should strip outer quotes
         assert_eq!(task.id, "task-quoted");
         assert_eq!(task.title, "My Quoted Title");
         assert_eq!(task.source, "some-source");
     }
 
-    // ── 5. archived: true is properly parsed ────────────────────────────
     #[test]
     fn parse_task_archived_true() {
-        let md = task_md(
-            "id: task-archived\narchived: true",
-            "",
-        );
-
+        let md = task_md("id: task-archived\narchived: true", "");
         let task = parse_task_markdown(&md).expect("should parse archived flag");
         assert!(task.archived, "archived should be true");
     }
 
-    // ── 6. Notes section after second --- is captured ───────────────────
     #[test]
     fn parse_task_captures_notes_section() {
         let notes_text = "## Meeting notes\n\n- Action item 1\n- Action item 2\n\nMore context here.";
         let md = task_md("id: task-notes", notes_text);
-
         let task = parse_task_markdown(&md).expect("should capture notes");
         assert_eq!(task.notes, notes_text);
     }
 
-    // ── Edge-case: missing id returns None ──────────────────────────────
     #[test]
     fn parse_task_missing_id_returns_none() {
         let md = task_md("title: No ID task\nstatus: todo", "notes");
-        assert!(
-            parse_task_markdown(&md).is_none(),
-            "task without id should return None"
-        );
+        assert!(parse_task_markdown(&md).is_none());
     }
 
-    // ── Edge-case: non-numeric estimated_hours defaults to 0 ────────────
     #[test]
     fn parse_task_non_numeric_hours_defaults_to_zero() {
         let md = task_md(
             "id: task-badhours\nestimated_hours: not_a_number\nactual_hours: ???",
             "",
         );
-
         let task = parse_task_markdown(&md).expect("should still parse");
         assert!((task.estimated_hours - 0.0).abs() < f32::EPSILON);
         assert!((task.actual_hours - 0.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn parse_note_roundtrip() {
+        let note = NoteData {
+            id: "note_123".to_string(),
+            title: "Daily Note - 2026-05-15".to_string(),
+            note_type: "daily".to_string(),
+            date: "2026-05-15".to_string(),
+            content: "## What I worked on\n- things".to_string(),
+            tags: vec!["work".to_string()],
+        };
+        let md = note_to_markdown(&note);
+        let parsed = parse_note_markdown(&md).expect("should round-trip");
+        assert_eq!(parsed.id, note.id);
+        assert_eq!(parsed.title, note.title);
+        assert_eq!(parsed.note_type, note.note_type);
+        assert_eq!(parsed.date, note.date);
+        assert_eq!(parsed.content, note.content);
+        assert_eq!(parsed.tags, note.tags);
     }
 }

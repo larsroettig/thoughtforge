@@ -69,7 +69,12 @@ interface AppState {
   activeSpaceId: string | null;
   setActiveSpaceId: (id: string | null) => void;
   addProjectSpace: (space: ProjectSpace) => void;
-  updateSpaceNote: (spaceId: string, note: SpaceNote) => void;
+
+  // Space Notes (keyed by space id)
+  spaceNotes: Record<string, SpaceNote[]>;
+  setSpaceNotes: (spaceId: string, notes: SpaceNote[]) => void;
+  upsertSpaceNote: (spaceId: string, note: SpaceNote) => void;
+  removeSpaceNote: (spaceId: string, noteId: string) => void;
 
   // Vault
   vaultInitialized: boolean;
@@ -105,7 +110,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Timer
   activeTimer: null,
   startTimer: (taskId) => {
-    // Stop any existing timer first
     const existing = get().activeTimer;
     if (existing) {
       get().stopTimer();
@@ -113,7 +117,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({
       activeTimer: { taskId, startedAt: Date.now() },
     });
-    // Also set task to in_progress
     set((state) => ({
       tasks: state.tasks.map((t) =>
         t.id === taskId ? { ...t, status: "in_progress" as const } : t
@@ -124,10 +127,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     const timer = get().activeTimer;
     if (!timer) return null;
 
-    const elapsed = (Date.now() - timer.startedAt) / (1000 * 60 * 60); // hours
+    const elapsed = (Date.now() - timer.startedAt) / (1000 * 60 * 60);
     const rounded = Math.round(elapsed * 100) / 100;
 
-    // Add elapsed time to task
     set((state) => ({
       activeTimer: null,
       tasks: state.tasks.map((t) =>
@@ -199,19 +201,29 @@ export const useAppStore = create<AppState>((set, get) => ({
   setActiveSpaceId: (id) => set({ activeSpaceId: id }),
   addProjectSpace: (space) =>
     set((state) => ({ projectSpaces: [...state.projectSpaces, space] })),
-  updateSpaceNote: (spaceId, note) =>
+
+  // Space Notes
+  spaceNotes: {},
+  setSpaceNotes: (spaceId, notes) =>
+    set((state) => ({ spaceNotes: { ...state.spaceNotes, [spaceId]: notes } })),
+  upsertSpaceNote: (spaceId, note) =>
+    set((state) => {
+      const existing = state.spaceNotes[spaceId] || [];
+      const idx = existing.findIndex((n) => n.id === note.id);
+      const updated = [...existing];
+      if (idx >= 0) {
+        updated[idx] = note;
+      } else {
+        updated.push(note);
+      }
+      return { spaceNotes: { ...state.spaceNotes, [spaceId]: updated } };
+    }),
+  removeSpaceNote: (spaceId, noteId) =>
     set((state) => ({
-      projectSpaces: state.projectSpaces.map((s) => {
-        if (s.id !== spaceId) return s;
-        const existing = s.notes.findIndex((n) => n.id === note.id);
-        const notes = [...s.notes];
-        if (existing >= 0) {
-          notes[existing] = note;
-        } else {
-          notes.push(note);
-        }
-        return { ...s, notes };
-      }),
+      spaceNotes: {
+        ...state.spaceNotes,
+        [spaceId]: (state.spaceNotes[spaceId] || []).filter((n) => n.id !== noteId),
+      },
     })),
 
   // Vault

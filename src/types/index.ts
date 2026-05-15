@@ -38,11 +38,6 @@ export interface BoardColumn {
   taskIds: string[];
 }
 
-export interface Project {
-  name: string;
-  filename: string;
-  content: string;
-}
 
 export interface StatusColors {
   todo: string;
@@ -124,7 +119,6 @@ export interface ProjectSpace {
   created: string;
   archived: boolean;
   documents: SpaceDocument[];
-  notes: SpaceNote[];
   timeEntries: TimeEntry[];
 }
 
@@ -143,6 +137,15 @@ export interface SpaceNote {
   date: string;
   content: string;
   tags: string[];
+}
+
+export interface NoteSearchResult {
+  note_id: string;
+  title: string;
+  date: string;
+  note_type: string;
+  preview: string;
+  score: number;
 }
 
 export type AppView = "dashboard" | "board" | "chat" | "documents" | "settings" | "archive" | "project-space" | "stats";

@@ -31,7 +31,6 @@ export function CreateSpaceModal({ onClose }: Props) {
       created: new Date().toISOString().split("T")[0],
       archived: false,
       documents: [],
-      notes: [],
       timeEntries: [],
     };
     addProjectSpace(space);

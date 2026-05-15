@@ -39,7 +39,7 @@ function SpaceItem({
   taskCount,
   onOpen,
 }: {
-  space: { id: string; name: string; color: string; notes: unknown[] };
+  space: { id: string; name: string; color: string };
   isActive: boolean;
   taskCount: number;
   onOpen: () => void;
@@ -128,7 +128,6 @@ function SpaceItem({
         <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: space.color }} />
         <span className="flex-1 text-left truncate">{space.name}</span>
         {taskCount > 0 && <span className="text-[10px] text-vault-text-muted">{taskCount}</span>}
-        <span className="text-[10px] text-vault-text-muted">{space.notes.length}n</span>
       </button>
 
       {showMenu && (

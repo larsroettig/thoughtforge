@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "@/stores/appStore";
-import type { Task, VaultConfig, ProjectSpace } from "@/types";
+import type { Task, VaultConfig, ProjectSpace, SpaceNote, NoteSearchResult } from "@/types";
 
 export function useVault() {
   const {
@@ -12,6 +12,9 @@ export function useVault() {
     updateTask,
     removeTask,
     setProjectSpaces,
+    setSpaceNotes,
+    upsertSpaceNote,
+    removeSpaceNote,
   } = useAppStore();
 
   const initVault = useCallback(async () => {
@@ -109,12 +112,10 @@ export function useVault() {
   const loadSpaces = useCallback(async () => {
     try {
       const raw = await invoke<ProjectSpace[]>("read_spaces");
-      // Ensure defaults for missing fields
       const spaces = raw.map((s) => ({
         ...s,
         archived: s.archived || false,
         documents: s.documents || [],
-        notes: s.notes || [],
         timeEntries: s.timeEntries || [],
       }));
       setProjectSpaces(spaces);
@@ -144,6 +145,57 @@ export function useVault() {
     }
   }, [setProjectSpaces]);
 
+  // ── Knowledge Search ────────────────────────────────────────────────
+
+  const indexSpaceNotes = useCallback(async (spaceId: string): Promise<number> => {
+    return invoke<number>("index_space_notes", { spaceId });
+  }, []);
+
+  const searchSpaceNotes = useCallback(async (
+    spaceId: string,
+    query: string,
+    limit?: number
+  ): Promise<NoteSearchResult[]> => {
+    return invoke<NoteSearchResult[]>("search_space_notes", { spaceId, query, limit });
+  }, []);
+
+  const spaceIndexStatus = useCallback(async (spaceId: string): Promise<{ indexed_count: number; last_modified_unix: number | null }> => {
+    return invoke("space_index_status", { spaceId });
+  }, []);
+
+  // ── Space Notes ─────────────────────────────────────────────────────
+
+  const loadSpaceNotes = useCallback(async (spaceId: string) => {
+    try {
+      const notes = await invoke<SpaceNote[]>("read_space_notes", { spaceId });
+      setSpaceNotes(spaceId, notes);
+      return notes;
+    } catch (err) {
+      console.error("Failed to load notes for space:", spaceId, err);
+      return [];
+    }
+  }, [setSpaceNotes]);
+
+  const saveSpaceNote = useCallback(async (spaceId: string, note: SpaceNote) => {
+    try {
+      await invoke("write_space_note", { spaceId, note });
+      upsertSpaceNote(spaceId, note);
+    } catch (err) {
+      console.error("Failed to save note:", err);
+      throw err;
+    }
+  }, [upsertSpaceNote]);
+
+  const deleteSpaceNote = useCallback(async (spaceId: string, noteId: string) => {
+    try {
+      await invoke("delete_space_note", { spaceId, noteId });
+      removeSpaceNote(spaceId, noteId);
+    } catch (err) {
+      console.error("Failed to delete note:", err);
+      throw err;
+    }
+  }, [removeSpaceNote]);
+
   return {
     initVault,
     loadTasks,
@@ -156,5 +208,11 @@ export function useVault() {
     loadSpaces,
     saveSpace,
     deleteSpace,
+    loadSpaceNotes,
+    saveSpaceNote,
+    deleteSpaceNote,
+    indexSpaceNotes,
+    searchSpaceNotes,
+    spaceIndexStatus,
   };
 }

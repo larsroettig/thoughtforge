@@ -30,7 +30,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { useAppStore } from "@/stores/appStore";
 import { useVault } from "@/hooks/useVault";
 import { useLlm } from "@/hooks/useLlm";
-import type { ProjectSpaceTab, SpaceNote, Task, StatusColors, TimeEntry } from "@/types";
+import type { ProjectSpaceTab, SpaceNote, Task, StatusColors, TimeEntry, NoteSearchResult } from "@/types";
 import { PROJECT_COLORS, DEFAULT_STATUS_COLORS } from "@/types";
 import { TaskCard } from "@/components/board/TaskCard";
 import { TaskModal } from "@/components/board/TaskModal";
@@ -51,11 +51,12 @@ export function ProjectSpaceView() {
     setActiveSpaceId,
     setView,
     tasks,
-    updateSpaceNote,
     setProjectSpaces,
+    spaceNotes,
+    upsertSpaceNote,
     config,
   } = useAppStore();
-  const { saveSpace: persistSpace, deleteSpace, saveTask } = useVault();
+  const { saveSpace: persistSpace, deleteSpace, saveTask, loadSpaceNotes, saveSpaceNote, deleteSpaceNote, indexSpaceNotes, searchSpaceNotes, spaceIndexStatus } = useVault();
   const { extractTasksFromText, isProcessing: llmProcessing } = useLlm();
 
   const [activeTab, setActiveTab] = useState<ProjectSpaceTab>("overview");
@@ -71,8 +72,67 @@ export function ProjectSpaceView() {
   const [showCreateTask, setShowCreateTask] = useState(false);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Knowledge search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<NoteSearchResult[]>([]);
+  const [searchError, setSearchError] = useState("");
+  const [isIndexing, setIsIndexing] = useState(false);
+  const [indexStatus, setIndexStatus] = useState<{ indexed_count: number; last_modified_unix: number | null } | null>(null);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const space = projectSpaces.find((s) => s.id === activeSpaceId);
   const sc: StatusColors = { ...DEFAULT_STATUS_COLORS, ...(config.status_colors || {}) };
+
+  // Notes loaded per-space from disk
+  const notes: SpaceNote[] = activeSpaceId ? (spaceNotes[activeSpaceId] || []) : [];
+
+  useEffect(() => {
+    if (activeSpaceId) loadSpaceNotes(activeSpaceId);
+  }, [activeSpaceId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load index status when knowledge tab opens
+  useEffect(() => {
+    if (activeTab === "knowledge" && activeSpaceId) {
+      spaceIndexStatus(activeSpaceId).then(setIndexStatus).catch(() => {});
+    }
+  }, [activeTab, activeSpaceId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Debounced semantic search
+  useEffect(() => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    if (!searchQuery.trim() || activeTab !== "knowledge") {
+      setSearchResults([]);
+      setSearchError("");
+      return;
+    }
+    searchTimer.current = setTimeout(async () => {
+      if (!activeSpaceId) return;
+      try {
+        setSearchError("");
+        const results = await searchSpaceNotes(activeSpaceId, searchQuery, 8);
+        setSearchResults(results);
+      } catch (err) {
+        setSearchError(String(err));
+        setSearchResults([]);
+      }
+    }, 400);
+    return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
+  }, [searchQuery, activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleIndexNotes = useCallback(async () => {
+    if (!activeSpaceId) return;
+    setIsIndexing(true);
+    setSearchError("");
+    try {
+      await indexSpaceNotes(activeSpaceId);
+      const status = await spaceIndexStatus(activeSpaceId);
+      setIndexStatus(status);
+    } catch (err) {
+      setSearchError(String(err));
+    } finally {
+      setIsIndexing(false);
+    }
+  }, [activeSpaceId, indexSpaceNotes, spaceIndexStatus]);
 
   // Project tasks
   const projectTasks = useMemo(() => {
@@ -90,16 +150,16 @@ export function ProjectSpaceView() {
 
   // Notes sorted by date
   const dailyNotes = useMemo(
-    () => (space?.notes || []).filter((n) => n.type === "daily").sort((a, b) => b.date.localeCompare(a.date)),
-    [space]
+    () => notes.filter((n) => n.type === "daily").sort((a, b) => b.date.localeCompare(a.date)),
+    [notes]
   );
   const meetingNotes = useMemo(
-    () => (space?.notes || []).filter((n) => n.type === "meeting").sort((a, b) => b.date.localeCompare(a.date)),
-    [space]
+    () => notes.filter((n) => n.type === "meeting").sort((a, b) => b.date.localeCompare(a.date)),
+    [notes]
   );
   const allNotes = useMemo(
-    () => (space?.notes || []).sort((a, b) => b.date.localeCompare(a.date)),
-    [space]
+    () => [...notes].sort((a, b) => b.date.localeCompare(a.date)),
+    [notes]
   );
 
   // ── Auto-save (3 second debounce) ──────────────────────────────────
@@ -117,15 +177,18 @@ export function ProjectSpaceView() {
     (updatedNote: SpaceNote) => {
       if (!space) return;
       setEditingNote(updatedNote);
-      updateSpaceNote(space.id, updatedNote);
+      upsertSpaceNote(space.id, updatedNote);
 
-      // Debounced auto-save
+      // Debounced save of individual note file
       if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-      autoSaveTimer.current = setTimeout(() => {
-        persistCurrentSpace();
+      autoSaveTimer.current = setTimeout(async () => {
+        setSaveStatus("saving");
+        await saveSpaceNote(space.id, updatedNote);
+        setSaveStatus("saved");
+        setTimeout(() => setSaveStatus("idle"), 1500);
       }, 3000);
     },
-    [space, updateSpaceNote, persistCurrentSpace]
+    [space, upsertSpaceNote, saveSpaceNote]
   );
 
   // Clean up timer on unmount
@@ -135,23 +198,26 @@ export function ProjectSpaceView() {
     };
   }, []);
 
-  // Save on tab switch or leaving the space
+  // Flush pending note save on tab switch or leaving the space
   useEffect(() => {
     return () => {
       if (autoSaveTimer.current) {
         clearTimeout(autoSaveTimer.current);
-        persistCurrentSpace();
+        const currentNote = editingNote;
+        if (currentNote && space) {
+          saveSpaceNote(space.id, currentNote);
+        }
       }
     };
-  }, [activeTab, persistCurrentSpace]);
+  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCreateNote = useCallback(async (type: "daily" | "meeting" | "note") => {
     if (!space) return;
     const today = new Date().toISOString().split("T")[0];
 
-    // For daily notes, check if one already exists for today -- open it instead
+    // For daily notes, open existing one for today if it exists
     if (type === "daily") {
-      const existing = space.notes.find((n) => n.type === "daily" && n.date === today);
+      const existing = notes.find((n) => n.type === "daily" && n.date === today);
       if (existing) {
         setEditingNote(existing);
         setPreviewMode(false);
@@ -166,24 +232,17 @@ export function ProjectSpaceView() {
     else title = "New Note";
 
     const note: SpaceNote = { id, title, type, date: today, content: "", tags: [] };
-    updateSpaceNote(space.id, note);
+    upsertSpaceNote(space.id, note);
     setEditingNote(note);
     setPreviewMode(false);
-
-    setTimeout(async () => {
-      const updated = useAppStore.getState().projectSpaces.find((s) => s.id === space.id);
-      if (updated) await persistSpace(updated);
-    }, 50);
-  }, [space, updateSpaceNote, persistSpace]);
+    await saveSpaceNote(space.id, note);
+  }, [space, notes, upsertSpaceNote, saveSpaceNote]);
 
   const handleDeleteNote = useCallback(async (noteId: string) => {
     if (!space) return;
-    const updatedNotes = space.notes.filter((n) => n.id !== noteId);
-    const updatedSpace = { ...space, notes: updatedNotes };
-    setProjectSpaces(projectSpaces.map((s) => (s.id === space.id ? updatedSpace : s)));
     if (editingNote?.id === noteId) setEditingNote(null);
-    await persistSpace(updatedSpace);
-  }, [space, projectSpaces, setProjectSpaces, persistSpace, editingNote]);
+    await deleteSpaceNote(space.id, noteId);
+  }, [space, editingNote, deleteSpaceNote]);
 
   // Right-click note state
   const [noteMenu, setNoteMenu] = useState<{ noteId: string; x: number; y: number } | null>(null);
@@ -250,10 +309,9 @@ export function ProjectSpaceView() {
   );
 
   const handleBack = () => {
-    // Flush any pending auto-save
     if (autoSaveTimer.current) {
       clearTimeout(autoSaveTimer.current);
-      persistCurrentSpace();
+      if (editingNote && space) saveSpaceNote(space.id, editingNote);
     }
     setActiveSpaceId(null);
     setView("dashboard");
@@ -849,43 +907,105 @@ export function ProjectSpaceView() {
 
         {/* ── AI KNOWLEDGE ── */}
         {activeTab === "knowledge" && (
-          <div className="max-w-3xl">
-            <div className="flex items-center gap-3 mb-4">
-              <Sparkles className="w-5 h-5 text-vault-accent" />
-              <div>
-                <h3 className="text-base font-semibold text-vault-text-bright">AI Knowledge Base</h3>
-                <p className="text-xs text-vault-text-muted">Everything the AI knows about this project.</p>
-              </div>
-            </div>
-            <div className="space-y-4">
-              <div className="card-base p-4">
-                <h4 className="text-xs font-semibold text-vault-text-muted uppercase tracking-wide mb-2">Sources</h4>
-                <div className="space-y-1.5 text-xs">
-                  <div className="flex justify-between text-vault-text">
-                    <span>Notes</span><span>{space.notes.length}</span>
-                  </div>
-                  <div className="flex justify-between text-vault-text">
-                    <span>Documents</span><span>{space.documents.length}</span>
-                  </div>
-                  <div className="flex justify-between text-vault-text">
-                    <span>Tasks</span><span>{projectTasks.length}</span>
-                  </div>
+          <div className="max-w-3xl space-y-4">
+            {/* Header row */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Sparkles className="w-5 h-5 text-vault-accent" />
+                <div>
+                  <h3 className="text-base font-semibold text-vault-text-bright">Semantic Search</h3>
+                  <p className="text-xs text-vault-text-muted">
+                    {indexStatus
+                      ? `${indexStatus.indexed_count} notes indexed${indexStatus.last_modified_unix ? ` · ${new Date(indexStatus.last_modified_unix * 1000).toLocaleDateString()}` : ""}`
+                      : "Not indexed yet"}
+                  </p>
                 </div>
               </div>
-              <div className="card-base p-4">
-                <h4 className="text-xs font-semibold text-vault-text-muted uppercase tracking-wide mb-2">Context Preview</h4>
-                <pre className="text-[10px] text-vault-text-muted font-mono whitespace-pre-wrap leading-relaxed max-h-80 overflow-y-auto bg-vault-bg rounded p-3">
-{`## Project: ${space.name}
-${space.description || ""}
-
-### Notes (${space.notes.length}):
-${space.notes.slice(0, 10).map((n) => `#### ${n.title} (${n.date})\n${n.content.slice(0, 300)}`).join("\n\n")}
-
-### Tasks (${projectTasks.length} total, ${openTasks.length} open):
-${openTasks.map((t) => `- [${t.status}] ${t.title} (${t.priority}) owner:${t.owner}${t.due ? ` due:${t.due}` : ""}`).join("\n")}`}
-                </pre>
-              </div>
+              <button
+                onClick={handleIndexNotes}
+                disabled={isIndexing || notes.length === 0}
+                className="btn-primary text-xs flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {isIndexing ? (
+                  <><div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" /> Indexing…</>
+                ) : (
+                  <><Sparkles className="w-3 h-3" /> Index Notes</>
+                )}
+              </button>
             </div>
+
+            {/* Search input */}
+            <div className="relative">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search notes semantically… (requires embedding model in LM Studio)"
+                className="input-base w-full pl-8 text-sm"
+              />
+              <Sparkles className="w-3.5 h-3.5 text-vault-text-muted absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              {searchQuery && (
+                <button
+                  onClick={() => { setSearchQuery(""); setSearchResults([]); setSearchError(""); }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-vault-text-muted hover:text-vault-text"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Error banner */}
+            {searchError && (
+              <div className="card-base p-3 border-vault-critical/30 bg-vault-critical/5 text-xs text-vault-critical">
+                {searchError}
+              </div>
+            )}
+
+            {/* Results */}
+            {searchResults.length > 0 && (
+              <div className="space-y-2">
+                {searchResults.map((r) => (
+                  <button
+                    key={r.note_id}
+                    onClick={() => {
+                      const note = notes.find((n) => n.id === r.note_id);
+                      if (note) { setEditingNote(note); setActiveTab(r.note_type === "meeting" ? "meetings" : "notes"); }
+                    }}
+                    className="card-base w-full p-3 text-left hover:border-vault-accent"
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      {r.note_type === "daily" && <Calendar className="w-3 h-3 text-vault-accent flex-shrink-0" />}
+                      {r.note_type === "meeting" && <Users className="w-3 h-3 text-vault-warning flex-shrink-0" />}
+                      {r.note_type === "note" && <StickyNote className="w-3 h-3 text-vault-success flex-shrink-0" />}
+                      <span className="text-xs font-medium text-vault-text-bright flex-1 truncate">{r.title}</span>
+                      <span className="text-[10px] text-vault-text-muted flex-shrink-0">{r.date}</span>
+                      <span className={`text-[10px] font-mono flex-shrink-0 ${r.score > 0.8 ? "text-vault-success" : r.score > 0.6 ? "text-vault-warning" : "text-vault-text-muted"}`}>
+                        {(r.score * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                    {r.preview && (
+                      <p className="text-[10px] text-vault-text-muted line-clamp-2">{r.preview}</p>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Empty state when no query */}
+            {!searchQuery && !searchError && (
+              <div className="card-base p-4 space-y-2 text-xs text-vault-text-muted">
+                <p className="font-semibold text-vault-text">How it works</p>
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>Load an embedding model in LM Studio (e.g. <code className="text-vault-accent">nomic-embed-text</code> or <code className="text-vault-accent">all-minilm</code>)</li>
+                  <li>Click <strong className="text-vault-text">Index Notes</strong> — this embeds all notes in this space (only changed notes are re-embedded on repeat runs)</li>
+                  <li>Type a natural-language question to find semantically relevant notes</li>
+                </ol>
+                <div className="pt-1 flex gap-4 text-[10px]">
+                  <span>{notes.length} notes in space</span>
+                  <span>{indexStatus?.indexed_count ?? 0} indexed</span>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
