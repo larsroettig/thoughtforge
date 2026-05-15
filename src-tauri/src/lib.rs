@@ -18,6 +18,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             vault::init_vault,
+            vault::change_vault_path,
             vault::read_tasks,
             vault::write_task,
             vault::delete_task,

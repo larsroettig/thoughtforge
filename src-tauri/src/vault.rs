@@ -19,13 +19,35 @@ pub fn get_system_info() -> SystemInfo {
     SystemInfo { total_ram_gb, cpu_arch }
 }
 
-pub fn vault_dir() -> PathBuf {
-    let home = dirs_next().unwrap_or_else(|| PathBuf::from("."));
-    home.join("Documents").join("ThoughtForge")
+fn home_dir() -> PathBuf {
+    std::env::var("HOME").ok().map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."))
 }
 
-fn dirs_next() -> Option<PathBuf> {
-    std::env::var("HOME").ok().map(PathBuf::from)
+fn vault_path_override_file() -> PathBuf {
+    home_dir().join(".thoughtforge_path")
+}
+
+pub fn vault_dir() -> PathBuf {
+    if let Ok(content) = fs::read_to_string(vault_path_override_file()) {
+        let p = content.trim().to_string();
+        if !p.is_empty() {
+            return PathBuf::from(p);
+        }
+    }
+    home_dir().join("Documents").join("ThoughtForge")
+}
+
+#[tauri::command]
+pub fn change_vault_path(new_path: String) -> Result<String, String> {
+    let override_file = vault_path_override_file();
+    if new_path.is_empty() {
+        if override_file.exists() {
+            fs::remove_file(&override_file).map_err(|e| e.to_string())?;
+        }
+    } else {
+        fs::write(&override_file, &new_path).map_err(|e| e.to_string())?;
+    }
+    Ok(vault_dir().to_string_lossy().to_string())
 }
 
 fn spaces_dir() -> PathBuf {

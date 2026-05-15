@@ -196,8 +196,21 @@ export function useVault() {
     }
   }, [removeSpaceNote]);
 
+  const changeVaultPath = useCallback(async (newPath: string) => {
+    const resolved = await invoke<string>("change_vault_path", { newPath });
+    await invoke("init_vault");
+    const config = await invoke<VaultConfig>("read_config");
+    setConfig(config);
+    const raw = await invoke<import("@/types").ProjectSpace[]>("read_spaces");
+    setProjectSpaces(raw.map((s) => ({ ...s, archived: s.archived || false, documents: s.documents || [], timeEntries: s.timeEntries || [] })));
+    const tasks = await invoke<import("@/types").Task[]>("read_tasks");
+    setTasks(tasks);
+    return resolved;
+  }, [setConfig, setProjectSpaces, setTasks]);
+
   return {
     initVault,
+    changeVaultPath,
     loadTasks,
     saveTask,
     deleteTask,

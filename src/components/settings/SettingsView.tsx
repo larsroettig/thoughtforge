@@ -41,7 +41,8 @@ const COLOR_PRESETS = [
 
 export function SettingsView() {
   const { config, setConfig, models, llmConnected } = useAppStore();
-  const { saveConfig, startWatching } = useVault();
+  const { saveConfig, startWatching, changeVaultPath } = useVault();
+  const [vaultChanging, setVaultChanging] = useState(false);
   const { theme, setTheme } = useTheme();
   const { checkConnection } = useLlm();
 
@@ -127,6 +128,18 @@ export function SettingsView() {
       watched_folders: prev.watched_folders.filter((_, i) => i !== index),
     }));
   }, []);
+
+  const handleChangeVault = useCallback(async () => {
+    const folder = await open({ directory: true, multiple: false });
+    if (!folder) return;
+    setVaultChanging(true);
+    try {
+      const resolved = await changeVaultPath(String(folder));
+      setForm((prev) => ({ ...prev, vault_path: resolved }));
+    } finally {
+      setVaultChanging(false);
+    }
+  }, [changeVaultPath]);
 
   const handleSave = useCallback(async () => {
     const toSave = { ...form, status_colors: statusColors };
@@ -428,12 +441,26 @@ export function SettingsView() {
         {/* Vault */}
         <section className="space-y-4">
           <h3 className="text-sm font-semibold text-vault-text uppercase tracking-wide">Vault</h3>
-          <div className="card-base p-4">
-            <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
+          <div className="card-base p-4 space-y-3">
+            <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide block">
               Vault Path
             </label>
-            <input type="text" value={form.vault_path} className="input-base w-full" disabled />
-            <p className="text-xs text-vault-text-muted mt-1">All data stored here as markdown files.</p>
+            <div className="flex items-center gap-2">
+              <input type="text" value={form.vault_path} className="input-base flex-1 min-w-0" readOnly />
+              <button
+                onClick={handleChangeVault}
+                disabled={vaultChanging}
+                className="btn-secondary flex items-center gap-1.5 shrink-0"
+              >
+                {vaultChanging
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <FolderPlus className="w-3.5 h-3.5" />}
+                Change…
+              </button>
+            </div>
+            <p className="text-xs text-vault-text-muted">
+              Pick any folder to start a clean vault there. Existing data is not deleted.
+            </p>
           </div>
         </section>
 
@@ -478,11 +505,12 @@ export function SettingsView() {
         </section>
 
         {/* App Updates */}
-        <section className="card-base p-6 space-y-4">
-          <div className="flex items-center gap-2">
-            <ArrowUpCircle className="w-5 h-5 text-vault-accent" />
-            <h2 className="settings-section-title">APP UPDATES</h2>
-          </div>
+        <section className="space-y-4">
+          <h3 className="text-sm font-semibold text-vault-text uppercase tracking-wide flex items-center gap-2">
+            <ArrowUpCircle className="w-4 h-4 text-vault-accent" />
+            App Updates
+          </h3>
+          <div className="card-base p-4 space-y-4">
 
           <div className="flex items-center justify-between">
             <div>
@@ -535,6 +563,7 @@ export function SettingsView() {
                 : <><RefreshCw className="w-3.5 h-3.5" /> Check for Updates</>}
             </button>
           )}
+          </div>
         </section>
 
         {/* Save */}
