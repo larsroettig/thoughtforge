@@ -65,8 +65,11 @@ export function BoardColumn({
         ))}
 
         {tasks.length === 0 && (
-          <div className="text-center py-8 text-vault-text-muted text-xs">
-            No tasks
+          <div className="flex flex-col items-center justify-center py-10 gap-2 text-vault-text-muted/40">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="9" />
+            </svg>
+            <span className="text-xs">No tasks</span>
           </div>
         )}
       </div>

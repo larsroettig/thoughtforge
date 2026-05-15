@@ -4,17 +4,14 @@ A local-first AI planning assistant. Extracts action items from meeting transcri
 
 ## Screenshots
 
-| Dashboard | Kanban Board |
-|-----------|-------------|
-| ![Dashboard](docs/screenshots/dashboard.png) | ![Board](docs/screenshots/kanban.png) |
-
-| Space View | Weekly Review |
-|------------|--------------|
-| ![Space](docs/screenshots/space_notes.png) | ![Weekly Review](docs/screenshots/weekly_review.png) |
-
-| AI Chat | Settings |
-|---------|----------|
-| ![Chat](docs/screenshots/chat.png) | ![Settings](docs/screenshots/settings.png) |
+| View | Dark | Light |
+|------|------|-------|
+| Dashboard | ![Dashboard Dark](docs/screenshots/dark/dashboard.png) | ![Dashboard Light](docs/screenshots/light/dashboard.png) |
+| Kanban Board | ![Board Dark](docs/screenshots/dark/kanban.png) | ![Board Light](docs/screenshots/light/kanban.png) |
+| Space & Notes | ![Space Dark](docs/screenshots/dark/space_notes.png) | ![Space Light](docs/screenshots/light/space_notes.png) |
+| Weekly Review | ![Weekly Dark](docs/screenshots/dark/weekly_review.png) | ![Weekly Light](docs/screenshots/light/weekly_review.png) |
+| AI Chat | ![Chat Dark](docs/screenshots/dark/chat.png) | ![Chat Light](docs/screenshots/light/chat.png) |
+| Settings | ![Settings Dark](docs/screenshots/dark/settings.png) | ![Settings Light](docs/screenshots/light/settings.png) |
 
 ## Features
 

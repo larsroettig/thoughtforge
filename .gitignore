@@ -39,6 +39,10 @@ Cargo.lock
 # Tauri
 src-tauri/icons/icon.iconset/
 
+# Migration/seed scripts (contain personal paths, not part of app)
+scripts/migrate-from-thoughtforge.cjs
+scripts/seed-demo-data.cjs
+
 # Debug
 *.log
 npm-debug.log*

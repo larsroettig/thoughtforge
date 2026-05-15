@@ -63,9 +63,9 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-vault-surface border border-vault-border rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div className="bg-vault-surface border border-vault-border rounded-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-vault-border">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-vault-border flex-shrink-0">
           <h3 className="text-lg font-bold text-vault-text-bright">
             {isNew ? "New Task" : "Edit Task"}
           </h3>
@@ -75,7 +75,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
         </div>
 
         {/* Form */}
-        <div className="px-6 py-4 space-y-4">
+        <div className="px-6 py-4 space-y-4 overflow-y-auto flex-1">
           {/* Title */}
           <div>
             <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
@@ -295,7 +295,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-vault-border">
+        <div className="flex items-center justify-between px-6 py-4 border-t border-vault-border flex-shrink-0">
           <div>
             {!isNew && (
               <button

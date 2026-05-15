@@ -127,7 +127,7 @@ function SpaceItem({
         }`}
       >
         <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: space.color }} />
-        <span className="flex-1 text-left truncate">{space.name}</span>
+        <span className="flex-1 text-left truncate" title={space.name}>{space.name}</span>
         {taskCount > 0 && <span className="text-[10px] text-vault-text-muted">{taskCount}</span>}
       </button>
 

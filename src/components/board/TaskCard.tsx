@@ -151,7 +151,7 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
         onContextMenu={handleContextMenu}
         className={`card-base cursor-grab active:cursor-grabbing group relative ${
           isTimerRunning ? "ring-1 ring-vault-success/50 border-vault-success/30" : ""
-        }`}
+        } ${task.status === "done" ? "opacity-60" : ""}`}
         style={{ borderLeftWidth: "3px", borderLeftColor: statusColor }}
       >
         {/* Timer indicator */}
@@ -179,7 +179,14 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
         </button>
 
         {/* Title */}
-        <h4 className="text-sm font-semibold text-vault-text-bright leading-snug mb-2 pr-6 group-hover:text-vault-accent transition-colors">
+        <h4
+          className={`text-sm font-semibold leading-snug mb-2 pr-6 group-hover:text-vault-accent transition-colors line-clamp-2 ${
+            task.status === "done"
+              ? "line-through text-vault-text-muted"
+              : "text-vault-text-bright"
+          }`}
+          title={task.title}
+        >
           {task.title}
         </h4>
 
