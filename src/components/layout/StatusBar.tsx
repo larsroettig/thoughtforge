@@ -43,7 +43,7 @@ export function StatusBar() {
 
       <div className="flex items-center gap-4">
         <span>
-          Models loaded: <span className="text-vault-text">{models.length}</span>
+          Models loaded: <span className="text-vault-text">{(models ?? []).length}</span>
         </span>
         <span className="text-vault-border">|</span>
         <span>{config.vault_path || "Vault not set"}</span>

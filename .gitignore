@@ -46,3 +46,6 @@ scripts/seed-demo-data.cjs
 # Debug
 *.log
 npm-debug.log*
+# Screenshot scripts (personal paths, not part of app)
+scripts/take-screenshots.sh
+scripts/take-screenshots.cjs
