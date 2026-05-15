@@ -59,12 +59,14 @@ export interface VaultConfig {
   vault_path: string;
   lm_studio_url: string;
   active_model: string;
+  embedding_model: string;
   watched_folders: string[];
   auto_process: boolean;
   theme: string;
   user_name: string;
   country: string;
   status_colors: StatusColors;
+  notifications_enabled?: boolean;
 }
 
 export interface LlmModel {

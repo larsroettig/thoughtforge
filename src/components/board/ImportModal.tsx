@@ -29,105 +29,6 @@ interface ParsedImportTask {
   selected: boolean;
 }
 
-// Map HTML tag classes to project names (auto-derived from class suffix)
-function tagClassToProject(className: string): string {
-  // Extract project name from tag-XXX class pattern
-  const match = className.match(/tag-(\w+)/);
-  if (!match) return "";
-  const suffix = match[1];
-  // Skip generic classes
-  if (["blocker", "owner", "source", "meta"].includes(suffix)) return "";
-  return suffix;
-}
-
-// Map column class to urgency
-const COLUMN_TO_URGENCY: Record<string, TaskUrgency> = {
-  "col-critical": "today",
-  "col-thisweek": "this_week",
-  "col-nextweek": "next_2weeks",
-  "col-ongoing": "ongoing",
-};
-
-function parseKanbanHtml(html: string): ParsedImportTask[] {
-  const tasks: ParsedImportTask[] = [];
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, "text/html");
-
-  const columns = doc.querySelectorAll(".column");
-
-  columns.forEach((column) => {
-    // Determine urgency from column class
-    let urgency: TaskUrgency = "ongoing";
-    let basePriority: TaskPriority = "medium";
-
-    for (const [cls, urg] of Object.entries(COLUMN_TO_URGENCY)) {
-      if (column.classList.contains(cls)) {
-        urgency = urg;
-        break;
-      }
-    }
-
-    if (column.classList.contains("col-critical")) {
-      basePriority = "critical";
-    }
-
-    const cards = column.querySelectorAll(".card");
-
-    cards.forEach((card) => {
-      const titleEl = card.querySelector(".card-title");
-      const contextEl = card.querySelector(".card-context");
-      const metaEl = card.querySelector(".card-meta");
-
-      const title = titleEl?.textContent?.trim() || "";
-      const context = contextEl?.textContent?.trim() || "";
-
-      if (!title) return;
-
-      // Parse tags from meta
-      let project = "";
-      let owner = "";
-      let priority = basePriority;
-      let source = "";
-
-      if (metaEl) {
-        const tags = metaEl.querySelectorAll(".tag");
-        tags.forEach((tag) => {
-          const text = tag.textContent?.trim() || "";
-          const classList = tag.className;
-
-          // Check for project tags (auto-derived from class name)
-          const derivedProject = tagClassToProject(classList);
-          if (derivedProject) {
-            project = derivedProject;
-            return;
-          }
-
-          if (classList.includes("tag-owner")) {
-            owner = text;
-          } else if (classList.includes("tag-source")) {
-            source = text;
-          } else if (classList.includes("tag-blocker")) {
-            priority = "critical";
-          }
-        });
-      }
-
-      tasks.push({
-        title,
-        context,
-        project,
-        owner,
-        priority,
-        urgency,
-        source,
-        selected: true,
-      });
-    });
-  });
-
-  return tasks;
-}
-
 function parseJsonImport(json: string): ParsedImportTask[] {
   try {
     const data = JSON.parse(json);
@@ -206,7 +107,7 @@ export function ImportModal({ onClose }: ImportModalProps) {
       filters: [
         {
           name: "Importable files",
-          extensions: ["html", "json", "md", "txt"],
+          extensions: ["json", "md", "txt"],
         },
       ],
     });
@@ -224,16 +125,14 @@ export function ImportModal({ onClose }: ImportModalProps) {
 
       let parsed: ParsedImportTask[] = [];
 
-      if (filename.endsWith(".html") || filename.endsWith(".htm")) {
-        parsed = parseKanbanHtml(content);
-      } else if (filename.endsWith(".json")) {
+      if (filename.endsWith(".json")) {
         parsed = parseJsonImport(content);
       } else if (filename.endsWith(".md") || filename.endsWith(".txt")) {
         parsed = parseMarkdownImport(content);
       }
 
       if (parsed.length === 0) {
-        setError("No tasks found in this file. Supported formats: HTML kanban boards, JSON task arrays, Markdown checklists.");
+        setError("No tasks found in this file. Supported formats: JSON task arrays, Markdown checklists.");
       }
 
       setImportedTasks(parsed);
@@ -313,7 +212,7 @@ export function ImportModal({ onClose }: ImportModalProps) {
               Import Tasks
             </h3>
             <p className="text-xs text-vault-text-muted mt-0.5">
-              Import from HTML kanban boards, JSON files, or Markdown checklists
+              Import from JSON files or Markdown checklists
             </p>
           </div>
           <button onClick={onClose} className="btn-ghost p-1">
@@ -359,7 +258,7 @@ export function ImportModal({ onClose }: ImportModalProps) {
                     Choose a file to import
                   </p>
                   <p className="text-xs text-vault-text-muted mt-1">
-                    .html .json .md .txt
+                    .json .md .txt
                   </p>
                 </div>
               </button>
@@ -376,14 +275,6 @@ export function ImportModal({ onClose }: ImportModalProps) {
                   Supported Formats
                 </h4>
                 <div className="space-y-2">
-                  <div className="card-base p-3">
-                    <p className="text-xs font-medium text-vault-text-bright">
-                      HTML Kanban Board
-                    </p>
-                    <p className="text-[10px] text-vault-text-muted mt-0.5">
-                      Import from the kanban-board.html generated by ThoughtForge. Preserves project tags, owners, priority, and urgency.
-                    </p>
-                  </div>
                   <div className="card-base p-3">
                     <p className="text-xs font-medium text-vault-text-bright">
                       JSON Task Array

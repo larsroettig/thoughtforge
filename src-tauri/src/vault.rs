@@ -215,6 +215,18 @@ pub struct VaultConfig {
     pub country: String,
     #[serde(default)]
     pub status_colors: StatusColors,
+    #[serde(default = "default_embedding_model")]
+    pub embedding_model: String,
+    #[serde(default = "default_true")]
+    pub notifications_enabled: bool,
+}
+
+fn default_embedding_model() -> String {
+    "nomic-embed-text-v1.5".to_string()
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for VaultConfig {
@@ -229,6 +241,8 @@ impl Default for VaultConfig {
             user_name: String::new(),
             country: "DE".to_string(),
             status_colors: StatusColors::default(),
+            embedding_model: default_embedding_model(),
+            notifications_enabled: true,
         }
     }
 }

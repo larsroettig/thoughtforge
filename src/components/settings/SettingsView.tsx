@@ -31,6 +31,37 @@ import { DEFAULT_STATUS_COLORS, STATUS_LABELS } from "@/types";
 import type { TaskStatus, StatusColors } from "@/types";
 import { SUPPORTED_COUNTRIES } from "@/lib/holidays";
 
+const EMBEDDING_MODELS = [
+  {
+    id: "nomic-embed-text-v1.5",
+    label: "nomic-embed-text v1.5",
+    size: "274 MB",
+    context: "8k",
+    desc: "Best all-round local embedding. Strong semantic search across long notes.",
+  },
+  {
+    id: "all-minilm-l6-v2",
+    label: "all-MiniLM-L6-v2",
+    size: "90 MB",
+    context: "512 tok",
+    desc: "Smallest and fastest. Good for short task titles and quick lookup.",
+  },
+  {
+    id: "mxbai-embed-large-v1",
+    label: "mxbai-embed-large v1",
+    size: "670 MB",
+    context: "512 tok",
+    desc: "Highest retrieval quality. Outperforms nomic on most benchmarks.",
+  },
+  {
+    id: "bge-m3",
+    label: "BGE-M3",
+    size: "1.1 GB",
+    context: "8k",
+    desc: "Multilingual + long context. Best if your notes mix languages.",
+  },
+];
+
 const COLOR_PRESETS = [
   "#8b949e", "#6c5ce7", "#58a6ff", "#79c0ff", "#3498db",
   "#d29922", "#f0883e", "#e67e22", "#f39c12",
@@ -286,6 +317,46 @@ export function SettingsView() {
                 </div>
               )}
             </div>
+
+            {/* Embedding Model */}
+            <div>
+              <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-2 block">
+                Embedding Model
+              </label>
+              <p className="text-[11px] text-vault-text-muted mb-3">
+                Used for semantic search. All options are open-source and run 100% locally — no data leaves your machine.
+              </p>
+              <div className="space-y-2">
+                {EMBEDDING_MODELS.map((em) => {
+                  const selected = form.embedding_model === em.id;
+                  return (
+                    <button
+                      key={em.id}
+                      onClick={() => setForm((prev) => ({ ...prev, embedding_model: em.id }))}
+                      className={`w-full text-left rounded-lg px-3 py-2.5 border transition-colors ${
+                        selected
+                          ? "border-vault-accent/50 bg-vault-accent/5"
+                          : "border-vault-border bg-vault-bg hover:border-vault-text-muted"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={`text-xs font-semibold ${selected ? "text-vault-accent" : "text-vault-text-bright"}`}>
+                          {em.label}
+                        </span>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className="text-[10px] text-vault-text-muted">{em.size}</span>
+                          <span className="text-[9px] bg-vault-success/10 text-vault-success px-1.5 py-0.5 rounded-full">local</span>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-vault-text-muted mt-0.5">{em.desc} · Context: {em.context}</p>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[10px] text-vault-text-muted mt-2">
+                Load the selected model in LM Studio under the <em>Embedding</em> tab before using semantic search.
+              </p>
+            </div>
           </div>
         </section>
 
@@ -306,7 +377,7 @@ export function SettingsView() {
           <h3 className="text-sm font-semibold text-vault-text uppercase tracking-wide">Profile</h3>
           <div className="card-base p-4">
             <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
-              Your Name
+              Your First Name
             </label>
             <input
               type="text"
@@ -316,7 +387,7 @@ export function SettingsView() {
               className="input-base w-full"
             />
             <p className="text-xs text-vault-text-muted mt-1">
-              Used for "My Tasks" dashboard filter. Matches against task owners.
+              Used for the "Me" quick-assign shortcut and the "My Tasks" dashboard filter.
             </p>
 
             <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block mt-4">
@@ -334,6 +405,27 @@ export function SettingsView() {
             <p className="text-xs text-vault-text-muted mt-1">
               Used by the AI planner to skip weekends and public holidays when scheduling tasks.
             </p>
+          </div>
+        </section>
+
+        {/* Notifications */}
+        <section className="space-y-4">
+          <h3 className="text-sm font-semibold text-vault-text uppercase tracking-wide">Notifications</h3>
+          <div className="card-base p-4">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.notifications_enabled !== false}
+                onChange={(e) => setForm((prev) => ({ ...prev, notifications_enabled: e.target.checked }))}
+                className="w-4 h-4 rounded"
+              />
+              <div>
+                <p className="text-sm text-vault-text">Due task notifications</p>
+                <p className="text-xs text-vault-text-muted">
+                  Show a bell indicator in the sidebar when tasks are overdue or due today.
+                </p>
+              </div>
+            </label>
           </div>
         </section>
 

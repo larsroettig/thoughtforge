@@ -9,7 +9,8 @@ interface OwnerSelectProps {
 }
 
 export function OwnerSelect({ value, onChange, compact = false }: OwnerSelectProps) {
-  const { tasks } = useAppStore();
+  const { tasks, config } = useAppStore();
+  const userName = config.user_name?.trim() || "";
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const ref = useRef<HTMLDivElement>(null);
@@ -153,6 +154,29 @@ export function OwnerSelect({ value, onChange, compact = false }: OwnerSelectPro
 
           {/* Options */}
           <div className="max-h-48 overflow-y-auto py-1">
+            {/* Me shortcut */}
+            {userName ? (
+              <button
+                onClick={() => handleSelect(userName)}
+                className={`flex items-center gap-2 w-full px-3 py-1.5 text-xs border-b border-vault-border ${
+                  value === userName
+                    ? "bg-vault-accent/10 text-vault-accent"
+                    : "text-vault-accent hover:bg-vault-card"
+                }`}
+              >
+                <User className="w-3 h-3" />
+                Me ({userName})
+              </button>
+            ) : (
+              <div
+                title="Set your first name in Settings first"
+                className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-vault-text-muted opacity-50 border-b border-vault-border cursor-default"
+              >
+                <User className="w-3 h-3" />
+                Me (set name in Settings)
+              </div>
+            )}
+
             {/* Unassign option */}
             <button
               onClick={() => handleSelect("")}
@@ -180,7 +204,12 @@ export function OwnerSelect({ value, onChange, compact = false }: OwnerSelectPro
             {/* Create new option if search doesn't match */}
             {search.trim() && !filtered.some((o) => o.toLowerCase() === search.toLowerCase()) && (
               <button
-                onClick={() => handleSelect(search.trim())}
+                onClick={() => {
+                  const raw = search.trim();
+                  // Use canonical user_name if typed value matches it case-insensitively
+                  const canonical = userName && raw.toLowerCase() === userName.toLowerCase() ? userName : raw;
+                  handleSelect(canonical);
+                }}
                 className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-vault-accent hover:bg-vault-card border-t border-vault-border"
               >
                 <span className="text-vault-accent">+</span>

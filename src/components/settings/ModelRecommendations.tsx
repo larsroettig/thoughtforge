@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Copy, Check, Cpu, AlertTriangle, Zap } from "lucide-react";
 import { useSystemInfo } from "@/hooks/useSystemInfo";
+import { useAppStore } from "@/stores/appStore";
 
 interface ModelSpec {
   label: string;       // display name
@@ -165,8 +166,23 @@ function ModelCard({ spec, label }: { spec: ModelSpec; label: string }) {
 
 const RAM_OPTIONS = [4, 8, 16, 32, 64, 96, 128];
 
+function getModelContext(modelId: string): string | null {
+  const id = modelId.toLowerCase();
+  for (const tier of TIERS) {
+    if (id.includes(tier.chat.searchTerm.split(" ")[0])) {
+      return tier.chat.context;
+    }
+  }
+  if (id.includes("deepseek") && (id.includes("r1") || id.includes("32b"))) return "32k";
+  if (id.includes("gemma-2") || id.includes("gemma2")) return "8k";
+  if (id.includes("128k")) return "128k";
+  if (id.includes("llama") || id.includes("qwen") || id.includes("mistral") || id.includes("phi")) return "128k";
+  return null;
+}
+
 export function ModelRecommendations() {
   const sysInfo = useSystemInfo();
+  const { config } = useAppStore();
   const [showAll, setShowAll] = useState(false);
   const [manualRam, setManualRam] = useState<number | null>(null);
 
@@ -227,15 +243,28 @@ export function ModelRecommendations() {
         </div>
       </div>
 
-      {/* Context window explainer */}
+      {/* Context window explainer — dynamic when a model is selected */}
       <div className="flex items-start gap-2 text-xs text-vault-text-muted bg-vault-bg/50 rounded-lg px-3 py-2 border border-vault-border">
         <Zap className="w-3.5 h-3.5 text-vault-accent flex-shrink-0 mt-0.5" />
-        <p>
-          <strong className="text-vault-text">About context windows:</strong>{" "}
-          Most 7B–14B models support 128k tokens (~100 notes). DeepSeek-R1 32B is capped at 32k.
-          For semantic search the context limit doesn't matter — notes are embedded in chunks,
-          not passed raw to the model.
-        </p>
+        {config.active_model ? (() => {
+          const ctx = getModelContext(config.active_model);
+          const name = config.active_model.split("/").pop() || config.active_model;
+          return (
+            <p>
+              <strong className="text-vault-text">{name}</strong>{" "}
+              {ctx
+                ? <>has a <strong className="text-vault-text">{ctx}</strong> context window{ctx === "32k" ? " — fits ~20 notes at once" : " — fits your entire note history"}.</>
+                : "context window unknown — check the model page."}{" "}
+              For semantic search the limit doesn't matter — notes are embedded in chunks, not passed raw to the model.
+            </p>
+          );
+        })() : (
+          <p>
+            <strong className="text-vault-text">Context windows:</strong>{" "}
+            Most 7B–14B models support 128k tokens (~100 notes). DeepSeek-R1 32B is capped at 32k.
+            For semantic search the limit doesn't matter — notes are embedded in chunks, not passed raw to the model.
+          </p>
+        )}
       </div>
 
       {/* Model cards */}

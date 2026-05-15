@@ -147,6 +147,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     vault_path: "",
     lm_studio_url: "http://localhost:1234",
     active_model: "",
+    embedding_model: "nomic-embed-text-v1.5",
+    notifications_enabled: true,
     watched_folders: [],
     auto_process: true,
     theme: "dark",
