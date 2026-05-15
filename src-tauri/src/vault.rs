@@ -13,10 +13,43 @@ pub struct SystemInfo {
 #[tauri::command]
 pub fn get_system_info() -> SystemInfo {
     use sysinfo::System;
-    let sys = System::new_all();
-    let total_ram_gb = sys.total_memory() / 1_073_741_824;
     let cpu_arch = std::env::consts::ARCH.to_string();
-    SystemInfo { total_ram_gb, cpu_arch }
+
+    // sysinfo can return 0 inside some OS sandboxes; fall back to native APIs.
+    let mut total_bytes = System::new_all().total_memory();
+
+    #[cfg(target_os = "macos")]
+    if total_bytes == 0 {
+        // `sysctl hw.memsize` always works on macOS without special entitlements.
+        if let Ok(out) = std::process::Command::new("sysctl")
+            .args(["-n", "hw.memsize"])
+            .output()
+        {
+            total_bytes = String::from_utf8_lossy(&out.stdout)
+                .trim()
+                .parse::<u64>()
+                .unwrap_or(0);
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    if total_bytes == 0 {
+        if let Ok(content) = std::fs::read_to_string("/proc/meminfo") {
+            for line in content.lines() {
+                if line.starts_with("MemTotal:") {
+                    if let Some(kb) = line.split_whitespace().nth(1) {
+                        total_bytes = kb.parse::<u64>().unwrap_or(0) * 1024;
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    SystemInfo {
+        total_ram_gb: total_bytes / 1_073_741_824,
+        cpu_arch,
+    }
 }
 
 fn home_dir() -> PathBuf {

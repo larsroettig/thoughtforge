@@ -163,20 +163,37 @@ function ModelCard({ spec, label }: { spec: ModelSpec; label: string }) {
   );
 }
 
+const RAM_OPTIONS = [4, 8, 16, 32, 64, 96, 128];
+
 export function ModelRecommendations() {
   const sysInfo = useSystemInfo();
   const [showAll, setShowAll] = useState(false);
+  const [manualRam, setManualRam] = useState<number | null>(null);
 
-  if (!sysInfo) {
+  const detectedRam = sysInfo?.total_ram_gb ?? 0;
+  const isAppleSilicon = sysInfo?.cpu_arch === "aarch64";
+  const ramGb = manualRam ?? (detectedRam > 0 ? detectedRam : null);
+
+  if (ramGb === null) {
     return (
-      <div className="card-base p-4 text-xs text-vault-text-muted animate-pulse">
-        Detecting system RAM…
+      <div className="card-base p-4 space-y-3">
+        <p className="text-xs text-vault-text-muted">Could not detect RAM automatically. Select your total RAM:</p>
+        <div className="flex flex-wrap gap-2">
+          {RAM_OPTIONS.map((gb) => (
+            <button
+              key={gb}
+              onClick={() => setManualRam(gb)}
+              className="btn-secondary text-xs px-3 py-1"
+            >
+              {gb} GB
+            </button>
+          ))}
+        </div>
       </div>
     );
   }
 
-  const isAppleSilicon = sysInfo.cpu_arch === "aarch64";
-  const tierIdx = getTierIndex(sysInfo.total_ram_gb, isAppleSilicon);
+  const tierIdx = getTierIndex(ramGb, isAppleSilicon);
   const recommended = TIERS[tierIdx];
   const visibleTiers = showAll ? TIERS : [recommended];
 
@@ -187,8 +204,9 @@ export function ModelRecommendations() {
         <Cpu className="w-5 h-5 text-vault-accent flex-shrink-0" />
         <div className="flex-1">
           <p className="text-sm font-semibold text-vault-text-bright">
-            {sysInfo.total_ram_gb} GB RAM
+            {ramGb} GB RAM
             {isAppleSilicon && " · Apple Silicon"}
+            {manualRam !== null && <span className="text-vault-text-muted font-normal text-xs"> (manual)</span>}
           </p>
           <p className="text-[10px] text-vault-text-muted">
             {isAppleSilicon
@@ -196,9 +214,17 @@ export function ModelRecommendations() {
               : "System RAM available for model loading"}
           </p>
         </div>
-        <span className={`text-[10px] font-medium px-2 py-1 rounded-full ${recommended.badgeColor}`}>
-          {recommended.badge}
-        </span>
+        <div className="flex flex-col items-end gap-1">
+          <span className={`text-[10px] font-medium px-2 py-1 rounded-full ${recommended.badgeColor}`}>
+            {recommended.badge}
+          </span>
+          <button
+            onClick={() => setManualRam(null)}
+            className="text-[9px] text-vault-text-muted hover:text-vault-accent"
+          >
+            change
+          </button>
+        </div>
       </div>
 
       {/* Context window explainer */}
