@@ -1,20 +1,32 @@
 # ThoughtForge
 
-A local-first AI planning assistant for macOS. Extracts action items from meeting transcripts, manages tasks on a kanban board, and uses a local LLM (via LM Studio) for smart planning -- all without sending data to the cloud.
+A local-first AI planning assistant. Extracts action items from meeting transcripts, manages tasks on a kanban board, and uses a local LLM (via LM Studio) for smart planning — all without sending data to the cloud.
+
+## Screenshots
+
+| Dashboard | Kanban Board |
+|-----------|-------------|
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Board](docs/screenshots/kanban.png) |
+
+| Space View | Weekly Review |
+|------------|--------------|
+| ![Space](docs/screenshots/space_notes.png) | ![Weekly Review](docs/screenshots/weekly_review.png) |
+
+| AI Chat | Settings |
+|---------|----------|
+| ![Chat](docs/screenshots/chat.png) | ![Settings](docs/screenshots/settings.png) |
 
 ## Features
 
-- **Dashboard** with smart filters (My Tasks, Overdue, Due Today, Blocked, etc.)
-- **Kanban Board** with 3 views: Time-based, Status-based, and Day-by-day
-- **AI Chat** for daily/weekly planning with task modification via confirmation flow
-- **Document Processing** -- upload transcripts (.txt, .md, .pdf), auto-extract action items
-- **Time Tracking** -- start/stop timer on tasks, hours logged to markdown
-- **Watch Folders** -- monitor directories for new transcripts
-- **Import** -- import from HTML kanban boards, JSON, or Markdown checklists
-- **Quick Actions** -- right-click any task to change status, set due date, assign, archive, or delete
-- **Archive** -- completed tasks move to a searchable archive
-- **Light/Dark Theme** -- follows macOS system preference, or set manually
-- **100% Local** -- no network calls except localhost LM Studio. No telemetry.
+- **Dashboard** — smart filters: My Tasks, Overdue, Due Today, Blocked, by project
+- **Kanban Board** — Time-based, Status, Day-by-day, and Calendar views
+- **Spaces** — per-project workspace with notes, tasks, booked hours, and semantic search
+- **AI Chat** — daily/weekly planning via local LLM; changes confirmed before writing
+- **Document Processing** — upload transcripts (.txt, .md, .pdf), auto-extract action items
+- **Time Tracking** — book hours per space, weekly timesheet grid, daily activity chart
+- **Semantic Search** — per-space vector index powered by LM Studio embeddings
+- **Model Recommendations** — RAM-aware model suggestions with LM Studio copy-paste commands
+- **100% Local** — no network calls except localhost. No telemetry.
 
 ## Architecture
 
@@ -22,58 +34,42 @@ A local-first AI planning assistant for macOS. Extracts action items from meetin
 |-------|-----------|
 | App framework | Tauri 2.x (Rust backend) |
 | Frontend | React 19 + TypeScript |
-| Styling | Tailwind CSS (CSS variable themes) |
+| Styling | Tailwind CSS |
 | State | Zustand |
 | LLM | OpenAI-compatible API via LM Studio |
-| Storage | Markdown files with YAML frontmatter |
+| Storage | Markdown + JSON files |
 
-### Storage
-
-All data lives as plain markdown files in `~/Documents/ThoughtForge/`:
+### Storage layout
 
 ```
 ~/Documents/ThoughtForge/
-  tasks/          # Individual task .md files
-  projects/       # Project notes
-  boards/         # Board configuration
-  chats/          # Chat session logs
-  uploads/        # Imported documents
-  config.yaml     # App settings
-```
-
-### Task Schema
-
-Each task is a markdown file with YAML frontmatter:
-
-```yaml
----
-id: "task_20260512_001"
-title: "Review quarterly report"
-status: todo
-priority: high
-urgency: this_week
-project: marketing
-owner: "Alice"
-due: 2026-05-14
-estimated_hours: 2
-actual_hours: 0
-archived: false
----
-
-Additional notes here.
+  spaces/
+    {id}/
+      space.json        # metadata (name, color, time entries)
+      notes/
+        {note-id}.md    # YAML frontmatter + markdown body
+      tasks/
+        {task-id}.md    # YAML frontmatter + notes body
+      search_index.json # per-space vector index
+  boards/
+    kanban.md
+  uploads/
+    transcripts/
+    documents/
+  config.yaml
 ```
 
 ## Prerequisites
 
-- **macOS** (Apple Silicon recommended)
+- **macOS / Windows / Linux**
 - **Rust** (1.70+): `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
 - **Node.js** (20+): `brew install node`
-- **LM Studio** (for AI features): Download from [lmstudio.ai](https://lmstudio.ai)
+- **LM Studio**: [lmstudio.ai](https://lmstudio.ai) — for AI features
 
 ## Setup
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/thoughtforge.git
+git clone https://github.com/larsroettig/thoughtforge.git
 cd thoughtforge
 npm install
 ```
@@ -84,52 +80,34 @@ npm install
 npm run tauri dev
 ```
 
-This starts Vite (hot-reload frontend) and compiles the Rust backend. The app opens automatically.
-
 ### Production Build
 
 ```bash
 npm run tauri build
 ```
 
-Produces:
-- `src-tauri/target/release/bundle/macos/ThoughtForge.app`
-- `src-tauri/target/release/bundle/dmg/ThoughtForge_0.1.0_aarch64.dmg`
+Produces a `.app` bundle and `.dmg` installer in `src-tauri/target/release/bundle/`.
 
-### Install
+## LM Studio Setup
 
-```bash
-cp -R src-tauri/target/release/bundle/macos/ThoughtForge.app /Applications/
-```
+1. Install [LM Studio](https://lmstudio.ai) and load models:
+   ```
+   lms load qwen2.5-14b-instruct        # chat (recommended for 16–32 GB RAM)
+   lms load nomic-embed-text-v1.5       # embeddings (for semantic search)
+   ```
+2. In ThoughtForge → Settings → verify URL is `http://localhost:1234`
+3. Select your chat model from the dropdown
 
-## Configuration
+See **Settings → Model Recommendations** for RAM-matched model suggestions.
 
-On first launch, the app creates `~/Documents/ThoughtForge/` and a default `config.yaml`.
+## AI Chat
 
-### LM Studio
-
-1. Install and open [LM Studio](https://lmstudio.ai)
-2. Load a model: `lms load qwen2.5-7b-instruct` (7B+ for chat, 32B+ for extraction)
-3. In ThoughtForge Settings, verify the URL is `http://localhost:1234` and select your model
-
-### Profile
-
-Set your name in Settings > Profile. This powers the "My Tasks" dashboard filter.
-
-### Watch Folders
-
-Add folders (e.g., your Audio Hijack transcripts directory) in Settings > Watched Folders. New `.txt`, `.md`, and `.pdf` files trigger extraction.
-
-## AI Chat & Planning
-
-The chat connects to LM Studio and can **propose task modifications**:
+The chat connects to your local LLM and can **propose task modifications**:
 
 1. Ask "plan my day" or "change priority of X to high"
-2. The AI responds with a plan and **proposed changes**
-3. A confirmation card appears: review each change
-4. Click **Apply All** to write changes, or **Reject** to discard
-
-The AI never writes to your vault without explicit confirmation.
+2. The AI responds with proposed changes
+3. A confirmation card appears — review each change, apply or skip individually
+4. The AI never writes to your vault without explicit confirmation
 
 ### Slash Commands
 
@@ -142,21 +120,17 @@ The AI never writes to your vault without explicit confirmation.
 | `/extract` | Extract action items from pasted text |
 | `/summarize` | Summarize a project |
 | `/prioritize` | Suggest priority ordering |
-| `/refine` | Break a task into subtasks |
 
 ## Testing
 
 ```bash
-# TypeScript tests
-npm test
-
-# Rust tests
-cd src-tauri && cargo test
+npm test                          # TypeScript/Vitest
+cd src-tauri && cargo test        # Rust unit tests
 ```
 
 ## Author
 
-Built by **Lars Roettig** in 2025.
+Built by **Lars Roettig**.
 
 ## License
 
