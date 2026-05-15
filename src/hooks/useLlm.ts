@@ -331,7 +331,7 @@ export function useLlm() {
             const extracted = JSON.parse(jsonStr) as Array<Record<string, unknown>>;
 
             for (const item of extracted) {
-              const id = `task_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+              const id = `task_${crypto.randomUUID()}`;
               allTasks.push({
                 id,
                 title: (item.title as string) || "",

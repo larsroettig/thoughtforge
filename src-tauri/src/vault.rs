@@ -78,6 +78,15 @@ pub fn change_vault_path(new_path: String) -> Result<String, String> {
             fs::remove_file(&override_file).map_err(|e| e.to_string())?;
         }
     } else {
+        let p = std::path::Path::new(&new_path);
+        // Reject paths that traverse into known sensitive system directories.
+        let forbidden_prefixes = ["/etc", "/usr", "/bin", "/sbin", "/sys", "/proc", "/boot"];
+        let canonical = p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+        for prefix in &forbidden_prefixes {
+            if canonical.starts_with(prefix) {
+                return Err(format!("Vault path '{}' is not allowed", new_path));
+            }
+        }
         fs::write(&override_file, &new_path).map_err(|e| e.to_string())?;
     }
     Ok(vault_dir().to_string_lossy().to_string())
@@ -562,8 +571,21 @@ pub fn list_uploads() -> Result<Vec<String>, String> {
 
 #[tauri::command]
 pub fn read_file_content(path: String) -> Result<String, String> {
-    fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read file {}: {}", path, e))
+    let requested = std::path::Path::new(&path)
+        .canonicalize()
+        .map_err(|_| "Invalid or non-existent path".to_string())?;
+
+    let vault = vault_dir()
+        .canonicalize()
+        .unwrap_or_else(|_| vault_dir());
+
+    // Only allow reads inside the vault directory.
+    if !requested.starts_with(&vault) {
+        return Err("Access denied: path is outside the vault directory".to_string());
+    }
+
+    fs::read_to_string(&requested)
+        .map_err(|e| format!("Failed to read file: {}", e))
 }
 
 // ── Project Spaces ───────────────────────────────────────────────────────

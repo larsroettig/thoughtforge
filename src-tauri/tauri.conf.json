@@ -29,7 +29,7 @@
       "iconAsTemplate": true
     },
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: https://asset.localhost; connect-src 'self' http://localhost:* http://127.0.0.1:*; font-src 'self' data:"
     }
   },
   "bundle": {

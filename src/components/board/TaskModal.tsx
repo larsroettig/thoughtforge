@@ -38,7 +38,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
   const [form, setForm] = useState<Task>(
     task || {
       ...EMPTY_TASK,
-      id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      id: `task_${crypto.randomUUID()}`,
     }
   );
 

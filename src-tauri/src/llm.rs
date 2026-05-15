@@ -1,6 +1,46 @@
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
+/// Validate that a base URL is safe to use as an LLM endpoint.
+/// Allows only http/https to localhost / 127.0.0.1 / ::1 or explicit LAN hosts.
+/// Blocks cloud metadata endpoints, private subnets and non-http(s) schemes.
+fn validate_llm_url(base_url: &str) -> Result<(), String> {
+    let url = url::Url::parse(base_url)
+        .map_err(|_| format!("Invalid LM Studio URL: '{}'", base_url))?;
+
+    match url.scheme() {
+        "http" | "https" => {}
+        s => return Err(format!("Disallowed URL scheme '{}': only http/https allowed", s)),
+    }
+
+    let host = url.host_str().unwrap_or("").to_lowercase();
+
+    // Block cloud metadata services and common SSRF targets.
+    let blocked_hosts = [
+        "169.254.169.254",  // AWS/GCP/Azure metadata
+        "metadata.google.internal",
+        "100.100.100.200",  // Alibaba metadata
+    ];
+    if blocked_hosts.contains(&host.as_str()) {
+        return Err(format!("Blocked host: '{}'", host));
+    }
+
+    // Allow only localhost and loopback — LM Studio always runs locally.
+    let allowed = matches!(
+        host.as_str(),
+        "localhost" | "127.0.0.1" | "::1" | "[::1]"
+    );
+    if !allowed {
+        return Err(format!(
+            "LM Studio URL must point to localhost (got '{}'). \
+             Remote LLM endpoints are not supported.",
+            host
+        ));
+    }
+
+    Ok(())
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LlmModel {
     pub id: String,
@@ -59,6 +99,7 @@ pub struct StreamResponse {
 
 #[tauri::command]
 pub async fn list_models(base_url: String) -> Result<Vec<LlmModel>, String> {
+    validate_llm_url(&base_url)?;
     let url = format!("{}/v1/models", base_url);
 
     let client = reqwest::Client::new();
@@ -85,6 +126,7 @@ pub async fn chat_completion(
     temperature: Option<f32>,
     max_tokens: Option<i32>,
 ) -> Result<String, String> {
+    validate_llm_url(&base_url)?;
     let url = format!("{}/v1/chat/completions", base_url);
 
     let request = ChatRequest {
@@ -126,6 +168,7 @@ pub async fn stream_chat(
     max_tokens: Option<i32>,
     stream_id: String,
 ) -> Result<(), String> {
+    validate_llm_url(&base_url)?;
     let url = format!("{}/v1/chat/completions", base_url);
 
     let request = ChatRequest {

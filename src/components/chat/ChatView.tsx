@@ -83,9 +83,15 @@ export function ChatView() {
       const { actions } = parseActions(fullText);
       if (actions.length === 0) return [];
 
+      const ALLOWED_ACTION_TYPES = new Set([
+        "create_task", "set_due", "set_priority", "set_status", "set_owner", "archive",
+      ]);
+
       const currentTasks = useAppStore.getState().tasks;
 
-      return actions.map((action) => {
+      return actions
+        .filter((action) => ALLOWED_ACTION_TYPES.has(action.type))
+        .map((action) => {
         if (action.type === "create_task") {
           // Check for duplicates
           const existing = findTaskByTitle(currentTasks, action.titleMatch);
@@ -142,7 +148,7 @@ export function ChatView() {
           }
 
           const newTask: Task = {
-            id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+            id: `task_${crypto.randomUUID()}`,
             title: p.action.titleMatch,
             status: "todo",
             priority: (p.action.priority as Task["priority"]) || "medium",
