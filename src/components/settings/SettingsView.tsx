@@ -15,7 +15,12 @@ import {
   Cpu,
   AlertCircle,
   Circle,
+  Download,
+  ArrowUpCircle,
 } from "lucide-react";
+import { check as checkUpdate, type Update } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { getVersion } from "@tauri-apps/api/app";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useAppStore } from "@/stores/appStore";
 import { useVault } from "@/hooks/useVault";
@@ -44,6 +49,51 @@ export function SettingsView() {
   const [checking, setChecking] = useState(false);
   const [saved, setSaved] = useState(false);
   const [editingStatusColor, setEditingStatusColor] = useState<TaskStatus | null>(null);
+
+  const [appVersion, setAppVersion] = useState<string>("");
+  const [updateChecking, setUpdateChecking] = useState(false);
+  const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null);
+  const [updateStatus, setUpdateStatus] = useState<"idle" | "up-to-date" | "downloading" | "done">("idle");
+  const [downloadProgress, setDownloadProgress] = useState(0);
+
+  useEffect(() => {
+    getVersion().then(setAppVersion).catch(() => {});
+  }, []);
+
+  const handleCheckUpdate = useCallback(async () => {
+    setUpdateChecking(true);
+    setUpdateStatus("idle");
+    setPendingUpdate(null);
+    try {
+      const update = await checkUpdate();
+      if (update?.available) {
+        setPendingUpdate(update);
+      } else {
+        setUpdateStatus("up-to-date");
+      }
+    } catch {
+      setUpdateStatus("up-to-date");
+    } finally {
+      setUpdateChecking(false);
+    }
+  }, []);
+
+  const handleInstallUpdate = useCallback(async () => {
+    if (!pendingUpdate) return;
+    setUpdateStatus("downloading");
+    setDownloadProgress(0);
+    let downloaded = 0;
+    let total = 0;
+    await pendingUpdate.downloadAndInstall((event) => {
+      if (event.event === "Started") total = event.data.contentLength ?? 0;
+      if (event.event === "Progress") {
+        downloaded += event.data.chunkLength;
+        setDownloadProgress(total > 0 ? Math.round((downloaded / total) * 100) : 0);
+      }
+      if (event.event === "Finished") setUpdateStatus("done");
+    });
+    await relaunch();
+  }, [pendingUpdate]);
 
   useEffect(() => {
     setForm(config);
@@ -425,6 +475,66 @@ export function SettingsView() {
               </div>
             </label>
           </div>
+        </section>
+
+        {/* App Updates */}
+        <section className="card-base p-6 space-y-4">
+          <div className="flex items-center gap-2">
+            <ArrowUpCircle className="w-5 h-5 text-vault-accent" />
+            <h2 className="settings-section-title">APP UPDATES</h2>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-vault-text">Current version</p>
+              <p className="text-xs text-vault-text-muted font-mono">{appVersion || "0.1.0"}</p>
+            </div>
+
+            {updateStatus === "up-to-date" && (
+              <span className="flex items-center gap-1 text-xs text-vault-success">
+                <Check className="w-3.5 h-3.5" /> Up to date
+              </span>
+            )}
+          </div>
+
+          {pendingUpdate ? (
+            <div className="bg-vault-accent/10 border border-vault-accent/30 rounded-lg p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Download className="w-4 h-4 text-vault-accent" />
+                <p className="text-sm font-semibold text-vault-accent">
+                  Version {pendingUpdate.version} available
+                </p>
+              </div>
+              {updateStatus === "downloading" ? (
+                <div className="space-y-1">
+                  <div className="h-1.5 bg-vault-border rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-vault-accent transition-all"
+                      style={{ width: `${downloadProgress}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-vault-text-muted">{downloadProgress}% — installing…</p>
+                </div>
+              ) : (
+                <button
+                  onClick={handleInstallUpdate}
+                  className="btn-primary text-sm flex items-center gap-1.5"
+                >
+                  <Download className="w-3.5 h-3.5" /> Install &amp; Relaunch
+                </button>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={handleCheckUpdate}
+              disabled={updateChecking}
+              className="btn-secondary flex items-center gap-1.5 text-sm"
+            >
+              {updateChecking
+                ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Checking…</>
+                : <><RefreshCw className="w-3.5 h-3.5" /> Check for Updates</>}
+            </button>
+          )}
         </section>
 
         {/* Save */}

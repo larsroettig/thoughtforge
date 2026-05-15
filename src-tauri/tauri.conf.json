@@ -49,6 +49,12 @@
   "plugins": {
     "fs": {
       "requireLiteralLeadingDot": false
+    },
+    "updater": {
+      "pubkey": "PLACEHOLDER_REPLACE_WITH_PUBLIC_KEY",
+      "endpoints": [
+        "https://github.com/larsroettig/thoughtforge/releases/latest/download/latest.json"
+      ]
     }
   }
 }
