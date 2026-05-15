@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicedoc/schemas/refs/heads/main/tauri-conf.json",
   "productName": "ThoughtForge",
-  "version": "0.1.0",
+  "version": "1.0.0-beta",
   "identifier": "com.thoughtforge.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
