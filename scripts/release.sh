@@ -16,6 +16,21 @@ if [[ -z "$VERSION" ]]; then
 fi
 TAG="v$VERSION"
 
+# ── QA ───────────────────────────────────────────────────────────────────────
+echo "Installing frontend deps..."
+npm ci
+
+echo "[1/3] TypeScript check..."
+npx tsc --noEmit
+
+echo "[2/3] Frontend tests..."
+npm test -- --run
+
+echo "[3/3] Rust tests..."
+(cd src-tauri && cargo test)
+
+echo "All QA checks passed."
+
 # ── version bump ─────────────────────────────────────────────────────────────
 echo "Bumping version to $VERSION..."
 
@@ -41,9 +56,6 @@ sed -i '' "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
 echo "Version bumped in package.json, tauri.conf.json, Cargo.toml"
 
 # ── build ────────────────────────────────────────────────────────────────────
-echo "Installing frontend deps..."
-npm ci
-
 echo "Building Tauri app (this takes a few minutes)..."
 npm run tauri build
 
