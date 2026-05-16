@@ -35,7 +35,7 @@ module.exports = {
             '--tw-prose-captions':       theme('colors.muted'),
             '--tw-prose-code':           theme('colors.code'),
             '--tw-prose-pre-code':       theme('colors.code'),
-            '--tw-prose-pre-bg':         '#0a0a0a',
+            '--tw-prose-pre-bg':         '#0d0d0d',
             '--tw-prose-th-borders':     theme('colors.edge'),
             '--tw-prose-td-borders':     theme('colors.edge'),
             'pre': {

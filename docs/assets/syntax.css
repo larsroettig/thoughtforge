@@ -1,0 +1,102 @@
+/* ThoughtForge docs — syntax highlight theme
+   Token colors designed for pure-black (#000) background             */
+
+/* ── Strings ───────────────────────────────────────────────── */
+.highlight .s,
+.highlight .sa,
+.highlight .sb,
+.highlight .sc,
+.highlight .s1,
+.highlight .s2,
+.highlight .sx  { color: #86efac; }   /* soft green  */
+
+/* String escape sequences (\n, \t …) */
+.highlight .se  { color: #fbbf24; }   /* amber        */
+
+/* String interpolation (#{…} in Ruby) */
+.highlight .si  { color: #c084fc; }   /* purple       */
+
+/* String symbol (:foo in Ruby) */
+.highlight .ss  { color: #86efac; }
+
+/* ── Numbers ────────────────────────────────────────────────── */
+.highlight .m,
+.highlight .mb,
+.highlight .mf,
+.highlight .mh,
+.highlight .mi,
+.highlight .mo,
+.highlight .il  { color: #fb923c; }   /* warm orange  */
+
+/* ── Keywords ───────────────────────────────────────────────── */
+.highlight .k,
+.highlight .kd,
+.highlight .kn,
+.highlight .kp,
+.highlight .kr  { color: #c084fc; }   /* light purple */
+
+/* Keyword constants: true / false / null */
+.highlight .kc  { color: #fbbf24; }   /* amber        */
+
+/* Keyword types (int, string …) */
+.highlight .kt  { color: #7dd3fc; }   /* sky blue     */
+
+/* ── Comments ───────────────────────────────────────────────── */
+.highlight .c,
+.highlight .ch,
+.highlight .cm,
+.highlight .cp,
+.highlight .cpf,
+.highlight .c1,
+.highlight .cs  { color: #52525b; font-style: italic; }   /* zinc */
+
+/* ── Names ──────────────────────────────────────────────────── */
+.highlight .n   { color: #d4d4d8; }   /* near-white   */
+
+/* Attributes / JSON keys */
+.highlight .na,
+.highlight .nl  { color: #93c5fd; }   /* blue-300     */
+
+/* Built-in names (print, len …) */
+.highlight .nb  { color: #7dd3fc; }   /* sky blue     */
+
+/* Class names */
+.highlight .nc  { color: #c084fc; }   /* purple       */
+
+/* Function / method names */
+.highlight .nf,
+.highlight .fm  { color: #7dd3fc; }   /* sky blue     */
+
+/* HTML / XML tags */
+.highlight .nt  { color: #c084fc; }   /* purple       */
+
+/* Variables */
+.highlight .nv,
+.highlight .vc,
+.highlight .vg,
+.highlight .vi  { color: #93c5fd; }   /* blue-300     */
+
+/* Constants (MY_CONST) */
+.highlight .no  { color: #fbbf24; }   /* amber        */
+
+/* Decorators / annotations */
+.highlight .nd  { color: #fb923c; }   /* orange       */
+
+/* ── Operators & Punctuation ────────────────────────────────── */
+.highlight .o,
+.highlight .ow  { color: #a1a1aa; }   /* zinc-400     */
+
+.highlight .p   { color: #71717a; }   /* zinc-500     */
+
+/* ── Generic output ─────────────────────────────────────────── */
+.highlight .ge  { font-style: italic; }
+.highlight .gs  { font-weight: 600; }
+.highlight .gu  { color: #52525b; }
+.highlight .gp  { color: #52525b; user-select: none; }
+.highlight .gr,
+.highlight .gt  { color: #f87171; }   /* red — errors */
+.highlight .gi  { color: #86efac; }   /* green — adds */
+.highlight .gd  { color: #f87171; }   /* red — dels   */
+
+/* ── Shell prompts (bash, sh) ───────────────────────────────── */
+.highlight .gp  { color: #52525b; user-select: none; }
