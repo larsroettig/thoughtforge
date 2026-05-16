@@ -17,7 +17,7 @@ module.exports = {
         accent:  '#7c3aed',
         'accent-lite': '#a78bfa',
         ok:      '#30d158',
-        code:    '#94e2a0',
+        code:    '#c8c8d0',
       },
       typography: ({ theme }) => ({
         tf: {
