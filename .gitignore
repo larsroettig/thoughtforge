@@ -50,8 +50,7 @@ npm-debug.log*
 scripts/take-screenshots.sh
 scripts/take-screenshots.cjs
 
-# Docs: generated Tailwind output (built by CI)
-docs/assets/style.css
+# Docs: Jekyll build output and cache
 docs/_site/
 docs/.jekyll-cache/
 docs/Gemfile.lock
