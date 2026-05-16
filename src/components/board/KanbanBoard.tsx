@@ -1,4 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
+import { DndContext, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import type { DragEndEvent } from "@dnd-kit/core";
 import {
   Clock,
   ListChecks,
@@ -10,6 +12,7 @@ import {
   User,
 } from "lucide-react";
 import { useAppStore } from "@/stores/appStore";
+import { useShallow } from "zustand/react/shallow";
 import { useVault } from "@/hooks/useVault";
 import { BoardColumn } from "./BoardColumn";
 import { DayView } from "./DayView";
@@ -36,7 +39,18 @@ export function KanbanBoard() {
     ownerFilter,
     setOwnerFilter,
     config,
-  } = useAppStore();
+  } = useAppStore(
+    useShallow((s) => ({
+      tasks: s.tasks,
+      boardView: s.boardView,
+      setBoardView: s.setBoardView,
+      projectFilter: s.projectFilter,
+      setProjectFilter: s.setProjectFilter,
+      ownerFilter: s.ownerFilter,
+      setOwnerFilter: s.setOwnerFilter,
+      config: s.config,
+    }))
+  );
 
   const { saveTask } = useVault();
 
@@ -120,7 +134,9 @@ export function KanbanBoard() {
     }));
   }, [filteredTasks, boardView]);
 
-  const handleDrop = (taskId: string, columnId: string) => {
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+
+  const handleDrop = useCallback((taskId: string, columnId: string) => {
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
 
@@ -138,7 +154,13 @@ export function KanbanBoard() {
     useAppStore.getState().updateTask(taskId, updates);
     const updated = { ...task, ...updates };
     saveTask(updated).catch(console.error);
-  };
+  }, [tasks, boardView, saveTask]);
+
+  const handleDndEnd = useCallback((event: DragEndEvent) => {
+    const taskId = String(event.active.id);
+    const columnId = event.over ? String(event.over.id) : null;
+    if (columnId) handleDrop(taskId, columnId);
+  }, [handleDrop]);
 
   const hasActiveFilters = projectFilter || ownerFilter;
 
@@ -305,19 +327,20 @@ export function KanbanBoard() {
             onDrop={handleDrop}
           />
         ) : (
-          <div className="grid grid-cols-4 gap-4 h-full">
-            {columns.map((col) => (
-              <BoardColumn
-                key={col.id}
-                id={col.id}
-                title={col.title}
-                color={col.color}
-                tasks={col.tasks}
-                onTaskClick={setEditingTask}
-                onDrop={handleDrop}
-              />
-            ))}
-          </div>
+          <DndContext sensors={sensors} onDragEnd={handleDndEnd}>
+            <div className="grid grid-cols-4 gap-4 h-full">
+              {columns.map((col) => (
+                <BoardColumn
+                  key={col.id}
+                  id={col.id}
+                  title={col.title}
+                  color={col.color}
+                  tasks={col.tasks}
+                  onTaskClick={setEditingTask}
+                />
+              ))}
+            </div>
+          </DndContext>
         )}
       </div>
 

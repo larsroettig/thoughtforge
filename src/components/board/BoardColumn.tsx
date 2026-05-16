@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useDroppable } from "@dnd-kit/core";
 import type { Task } from "@/types";
 import { TaskCard } from "./TaskCard";
 
@@ -8,44 +8,17 @@ interface BoardColumnProps {
   color: string;
   tasks: Task[];
   onTaskClick: (task: Task) => void;
-  onDrop: (taskId: string, columnId: string) => void;
 }
 
-export function BoardColumn({
-  id,
-  title,
-  color,
-  tasks,
-  onTaskClick,
-  onDrop,
-}: BoardColumnProps) {
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.currentTarget.classList.add("ring-1", "ring-vault-accent/30");
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.currentTarget.classList.remove("ring-1", "ring-vault-accent/30");
-  }, []);
-
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      e.currentTarget.classList.remove("ring-1", "ring-vault-accent/30");
-      const taskId = e.dataTransfer.getData("text/plain");
-      if (taskId) {
-        onDrop(taskId, id);
-      }
-    },
-    [id, onDrop]
-  );
+export function BoardColumn({ id, title, color, tasks, onTaskClick }: BoardColumnProps) {
+  const { isOver, setNodeRef } = useDroppable({ id });
 
   return (
     <div
-      className="min-w-0 bg-vault-surface rounded-xl p-4 flex flex-col max-h-full"
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
+      ref={setNodeRef}
+      className={`min-w-0 bg-vault-surface rounded-xl p-4 flex flex-col max-h-full transition-all ${
+        isOver ? "ring-1 ring-vault-accent/30" : ""
+      }`}
     >
       {/* Column Header */}
       <div
@@ -61,7 +34,7 @@ export function BoardColumn({
       {/* Cards */}
       <div className="flex-1 overflow-y-auto space-y-2.5 min-h-0">
         {tasks.map((task) => (
-          <TaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} />
+          <TaskCard key={task.id} task={task} onClick={onTaskClick} draggable />
         ))}
 
         {tasks.length === 0 && (

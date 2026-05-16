@@ -1,5 +1,8 @@
 import { useMemo, useState, useCallback, useRef } from "react";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { DndContext, PointerSensor, useSensor, useSensors, useDroppable, useDraggable } from "@dnd-kit/core";
+import type { DragEndEvent } from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
 import { useAppStore } from "@/stores/appStore";
 import { useVault } from "@/hooks/useVault";
 import { formatHours } from "@/lib/time";
@@ -27,6 +30,87 @@ function fmt(d: Date): string {
   return d.toISOString().split("T")[0];
 }
 
+function getTaskPosition(task: Task, dayTasks: Task[]): { top: number; height: number } {
+  const idx = dayTasks.indexOf(task);
+  const estimatedH = task.estimated_hours || 1;
+  let startHour = 8;
+  for (let i = 0; i < idx; i++) {
+    startHour += dayTasks[i].estimated_hours || 1;
+  }
+  return {
+    top: (startHour - 7) * HOUR_HEIGHT,
+    height: Math.max(estimatedH * HOUR_HEIGHT, 40),
+  };
+}
+
+function DroppableHourSlot({ id, top }: { id: string; top: number }) {
+  const { isOver, setNodeRef } = useDroppable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`absolute w-full border-b border-vault-border ${isOver ? "bg-vault-accent/10" : ""}`}
+      style={{ top, height: HOUR_HEIGHT }}
+    />
+  );
+}
+
+function DraggableTaskBlock({
+  task,
+  top,
+  height,
+  color,
+  sc,
+  onTaskClick,
+}: {
+  task: Task;
+  top: number;
+  height: number;
+  color: string;
+  sc: StatusColors;
+  onTaskClick: (task: Task) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: task.id });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        top,
+        height: Math.max(height, 36),
+        backgroundColor: `${color}20`,
+        borderLeft: `3px solid ${color}`,
+        transform: CSS.Translate.toString(transform),
+        opacity: isDragging ? 0.5 : 1,
+      }}
+      {...attributes}
+      {...listeners}
+      onClick={() => onTaskClick(task)}
+      className="absolute left-1 right-1 rounded-md px-2 py-1.5 cursor-grab active:cursor-grabbing overflow-hidden hover:ring-1 hover:ring-vault-accent/50 transition-all group touch-none"
+    >
+      <p className="text-[11px] font-medium text-vault-text-bright leading-tight truncate">
+        {task.title}
+      </p>
+      <div className="flex items-center gap-1 mt-0.5">
+        <span className="text-[9px] font-medium" style={{ color }}>
+          {task.project}
+        </span>
+        {task.estimated_hours > 0 && (
+          <span className="text-[9px] text-vault-text-muted">
+            {formatHours(task.estimated_hours)}
+          </span>
+        )}
+        {task.actual_hours > 0 && (
+          <span className="text-[9px] text-vault-success">
+            {formatHours(task.actual_hours)}
+          </span>
+        )}
+      </div>
+      {height > 50 && task.owner && (
+        <p className="text-[9px] text-vault-text-muted mt-0.5 truncate">{task.owner}</p>
+      )}
+    </div>
+  );
+}
+
 interface CalendarViewProps {
   tasks: Task[];
   onTaskClick: (task: Task) => void;
@@ -39,13 +123,12 @@ export function CalendarView({ tasks, onTaskClick, onDrop }: CalendarViewProps) 
   const sc: StatusColors = { ...DEFAULT_STATUS_COLORS, ...(config.status_colors || {}) };
   const [weekOffset, setWeekOffset] = useState(0);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [dragOverSlot, setDragOverSlot] = useState<{ day: string; hour: number } | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
 
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
   const days = useMemo(() => getWeekDates(weekOffset), [weekOffset]);
   const today = fmt(new Date());
 
-  // Tasks with due dates mapped to days
   const tasksByDay = useMemo(() => {
     const map: Record<string, Task[]> = {};
     for (const d of days) {
@@ -59,7 +142,6 @@ export function CalendarView({ tasks, onTaskClick, onDrop }: CalendarViewProps) 
     return map;
   }, [tasks, days]);
 
-  // Hours per day from spaces
   const hoursPerDay = useMemo(() => {
     const map: Record<string, number> = {};
     for (const d of days) {
@@ -70,7 +152,6 @@ export function CalendarView({ tasks, onTaskClick, onDrop }: CalendarViewProps) 
           if (te.date === ds) h += te.hours;
         }
       }
-      // Also task tracked hours for tasks due that day
       for (const t of tasksByDay[ds] || []) {
         h += t.actual_hours;
       }
@@ -79,50 +160,14 @@ export function CalendarView({ tasks, onTaskClick, onDrop }: CalendarViewProps) 
     return map;
   }, [days, projectSpaces, tasksByDay]);
 
-  // Handle dropping a task onto a day/hour slot
-  const handleDrop = useCallback(
-    async (e: React.DragEvent, dayStr: string, hour: number) => {
-      e.preventDefault();
-      setDragOverSlot(null);
-      const taskId = e.dataTransfer.getData("text/plain");
-      if (!taskId) return;
-
-      const task = tasks.find((t) => t.id === taskId);
-      if (!task) return;
-
-      // Update due date
+  const handleDndEnd = useCallback(
+    (event: DragEndEvent) => {
+      if (!event.over) return;
+      const taskId = String(event.active.id);
+      const [dayStr] = String(event.over.id).split("::");
       onDrop(taskId, dayStr);
     },
-    [tasks, onDrop]
-  );
-
-  const handleDragOver = useCallback(
-    (e: React.DragEvent, dayStr: string, hour: number) => {
-      e.preventDefault();
-      setDragOverSlot({ day: dayStr, hour });
-    },
-    []
-  );
-
-  const handleDragLeave = useCallback(() => {
-    setDragOverSlot(null);
-  }, []);
-
-  // Distribute tasks across time slots (simple stacking)
-  const getTaskPosition = useCallback(
-    (task: Task, dayTasks: Task[]): { top: number; height: number } => {
-      const idx = dayTasks.indexOf(task);
-      const estimatedH = task.estimated_hours || 1;
-      // Stack tasks from 8 AM downward
-      let startHour = 8;
-      for (let i = 0; i < idx; i++) {
-        startHour += dayTasks[i].estimated_hours || 1;
-      }
-      const top = (startHour - 7) * HOUR_HEIGHT;
-      const height = Math.max(estimatedH * HOUR_HEIGHT, 40);
-      return { top, height };
-    },
-    []
+    [onDrop]
   );
 
   return (
@@ -146,144 +191,101 @@ export function CalendarView({ tasks, onTaskClick, onDrop }: CalendarViewProps) 
       </div>
 
       {/* Calendar Grid */}
-      <div className="flex-1 overflow-auto" ref={gridRef}>
-        <div className="flex min-w-max">
-          {/* Time Labels Column */}
-          <div className="w-16 flex-shrink-0">
-            <div className="h-14" /> {/* Header spacer */}
-            {HOURS.map((hour) => (
-              <div
-                key={hour}
-                className="flex items-start justify-end pr-2 text-[10px] text-vault-text-muted"
-                style={{ height: HOUR_HEIGHT }}
-              >
-                {hour <= 12 ? hour : hour - 12}:00{hour < 12 ? "AM" : "PM"}
-              </div>
-            ))}
-          </div>
-
-          {/* Day Columns */}
-          {days.map((day) => {
-            const dayStr = fmt(day);
-            const isToday = dayStr === today;
-            const dayTasks = tasksByDay[dayStr] || [];
-            const dayHours = hoursPerDay[dayStr] || 0;
-
-            return (
-              <div key={dayStr} className="flex-1 min-w-[160px] border-l border-vault-border">
-                {/* Day Header */}
+      <DndContext sensors={sensors} onDragEnd={handleDndEnd}>
+        <div className="flex-1 overflow-auto" ref={gridRef}>
+          <div className="flex min-w-max">
+            {/* Time Labels Column */}
+            <div className="w-16 flex-shrink-0">
+              <div className="h-14" />
+              {HOURS.map((hour) => (
                 <div
-                  className={`h-14 px-2 py-1.5 border-b border-vault-border text-center ${
-                    isToday ? "bg-vault-accent/5" : ""
-                  }`}
+                  key={hour}
+                  className="flex items-start justify-end pr-2 text-[10px] text-vault-text-muted"
+                  style={{ height: HOUR_HEIGHT }}
                 >
-                  <p className={`text-xs font-semibold ${isToday ? "text-vault-accent" : "text-vault-text-bright"}`}>
-                    {day.toLocaleDateString("en-US", { weekday: "short" })},{" "}
-                    {day.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                  </p>
-                  <p className={`text-[10px] ${dayHours > 0 ? "text-vault-accent font-medium" : "text-vault-text-muted"}`}>
-                    {dayHours > 0 ? formatHours(dayHours) : "0h"}
-                  </p>
+                  {hour <= 12 ? hour : hour - 12}:00{hour < 12 ? "AM" : "PM"}
                 </div>
+              ))}
+            </div>
 
-                {/* Hour Grid */}
-                <div className="relative" style={{ height: HOURS.length * HOUR_HEIGHT }}>
-                  {/* Grid Lines */}
-                  {HOURS.map((hour) => (
-                    <div
-                      key={hour}
-                      className={`absolute w-full border-b border-vault-border ${
-                        dragOverSlot?.day === dayStr && dragOverSlot?.hour === hour
-                          ? "bg-vault-accent/10"
-                          : ""
-                      }`}
-                      style={{ top: (hour - 7) * HOUR_HEIGHT, height: HOUR_HEIGHT }}
-                      onDragOver={(e) => handleDragOver(e, dayStr, hour)}
-                      onDragLeave={handleDragLeave}
-                      onDrop={(e) => handleDrop(e, dayStr, hour)}
-                    />
-                  ))}
+            {/* Day Columns */}
+            {days.map((day) => {
+              const dayStr = fmt(day);
+              const isToday = dayStr === today;
+              const dayTasks = tasksByDay[dayStr] || [];
+              const dayHours = hoursPerDay[dayStr] || 0;
 
-                  {/* Task Blocks */}
-                  {dayTasks.map((task) => {
-                    const { top, height } = getTaskPosition(task, dayTasks);
-                    const color = PROJECT_COLORS[task.project] || PROJECT_COLORS.default;
-                    const statusColor = sc[task.status] || sc.todo;
+              return (
+                <div key={dayStr} className="flex-1 min-w-[160px] border-l border-vault-border">
+                  {/* Day Header */}
+                  <div
+                    className={`h-14 px-2 py-1.5 border-b border-vault-border text-center ${
+                      isToday ? "bg-vault-accent/5" : ""
+                    }`}
+                  >
+                    <p className={`text-xs font-semibold ${isToday ? "text-vault-accent" : "text-vault-text-bright"}`}>
+                      {day.toLocaleDateString("en-US", { weekday: "short" })},{" "}
+                      {day.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                    </p>
+                    <p className={`text-[10px] ${dayHours > 0 ? "text-vault-accent font-medium" : "text-vault-text-muted"}`}>
+                      {dayHours > 0 ? formatHours(dayHours) : "0h"}
+                    </p>
+                  </div>
 
-                    return (
-                      <div
-                        key={task.id}
-                        draggable
-                        onDragStart={(e) => {
-                          e.dataTransfer.setData("text/plain", task.id);
-                          e.dataTransfer.effectAllowed = "move";
-                          (e.target as HTMLElement).style.opacity = "0.5";
-                        }}
-                        onDragEnd={(e) => {
-                          (e.target as HTMLElement).style.opacity = "1";
-                        }}
-                        onClick={() => onTaskClick(task)}
-                        className="absolute left-1 right-1 rounded-md px-2 py-1.5 cursor-grab active:cursor-grabbing overflow-hidden hover:ring-1 hover:ring-vault-accent/50 transition-all group"
-                        style={{
-                          top,
-                          height: Math.max(height, 36),
-                          backgroundColor: `${color}20`,
-                          borderLeft: `3px solid ${color}`,
-                        }}
-                      >
-                        <p className="text-[11px] font-medium text-vault-text-bright leading-tight truncate">
-                          {task.title}
-                        </p>
-                        <div className="flex items-center gap-1 mt-0.5">
-                          <span
-                            className="text-[9px] font-medium"
-                            style={{ color }}
-                          >
-                            {task.project}
-                          </span>
-                          {task.estimated_hours > 0 && (
-                            <span className="text-[9px] text-vault-text-muted">
-                              {formatHours(task.estimated_hours)}
-                            </span>
-                          )}
-                          {task.actual_hours > 0 && (
-                            <span className="text-[9px] text-vault-success">
-                              {formatHours(task.actual_hours)}
-                            </span>
-                          )}
-                        </div>
-                        {height > 50 && task.owner && (
-                          <p className="text-[9px] text-vault-text-muted mt-0.5 truncate">
-                            {task.owner}
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })}
+                  {/* Hour Grid */}
+                  <div className="relative" style={{ height: HOURS.length * HOUR_HEIGHT }}>
+                    {HOURS.map((hour) => (
+                      <DroppableHourSlot
+                        key={hour}
+                        id={`${dayStr}::${hour}`}
+                        top={(hour - 7) * HOUR_HEIGHT}
+                      />
+                    ))}
 
-                  {/* Today marker line */}
-                  {isToday && (() => {
-                    const now = new Date();
-                    const currentHour = now.getHours() + now.getMinutes() / 60;
-                    if (currentHour >= 7 && currentHour <= 21) {
-                      const top = (currentHour - 7) * HOUR_HEIGHT;
+                    {dayTasks.map((task) => {
+                      const { top, height } = getTaskPosition(task, dayTasks);
+                      const color = PROJECT_COLORS[task.project] || PROJECT_COLORS.default;
                       return (
-                        <div
-                          className="absolute left-0 right-0 border-t-2 border-vault-critical z-10 pointer-events-none"
-                          style={{ top }}
-                        >
-                          <div className="w-2 h-2 rounded-full bg-vault-critical -mt-1 -ml-1" />
-                        </div>
+                        <DraggableTaskBlock
+                          key={task.id}
+                          task={task}
+                          top={top}
+                          height={height}
+                          color={color}
+                          sc={sc}
+                          onTaskClick={onTaskClick}
+                        />
                       );
-                    }
-                    return null;
-                  })()}
+                    })}
+
+                    {/* Today marker */}
+                    {isToday && (() => {
+                      const now = new Date();
+                      const currentHour = now.getHours() + now.getMinutes() / 60;
+                      if (currentHour >= 7 && currentHour <= 21) {
+                        const top = (currentHour - 7) * HOUR_HEIGHT;
+                        return (
+                          <div
+                            className="absolute left-0 right-0 border-t-2 border-vault-critical z-10 pointer-events-none"
+                            style={{ top }}
+                          >
+                            <div className="w-2 h-2 rounded-full bg-vault-critical -mt-1 -ml-1" />
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
-      </div>
+      </DndContext>
+
+      {editingTask && (
+        <TaskModal task={editingTask} onClose={() => setEditingTask(null)} />
+      )}
     </div>
   );
 }

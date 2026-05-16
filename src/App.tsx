@@ -1,19 +1,24 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { StatusBar } from "@/components/layout/StatusBar";
-import { DashboardView } from "@/components/board/DashboardView";
-import { KanbanBoard } from "@/components/board/KanbanBoard";
-import { ArchiveView } from "@/components/board/ArchiveView";
-import { StatsView } from "@/components/board/StatsView";
-import { ProjectSpaceView } from "@/components/spaces/ProjectSpaceView";
-import { ChatView } from "@/components/chat/ChatView";
-import { DocumentsView } from "@/components/documents/DocumentsView";
-import { SettingsView } from "@/components/settings/SettingsView";
-import { ExtractionModal } from "@/components/documents/ExtractionModal";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useAppStore } from "@/stores/appStore";
 import { useVault } from "@/hooks/useVault";
 import type { ProjectSpace } from "@/types";
 import { useLlm } from "@/hooks/useLlm";
+
+const DashboardView   = lazy(() => import("@/components/board/DashboardView").then((m) => ({ default: m.DashboardView })));
+const KanbanBoard     = lazy(() => import("@/components/board/KanbanBoard").then((m) => ({ default: m.KanbanBoard })));
+const ArchiveView     = lazy(() => import("@/components/board/ArchiveView").then((m) => ({ default: m.ArchiveView })));
+const StatsView       = lazy(() => import("@/components/board/StatsView").then((m) => ({ default: m.StatsView })));
+const ProjectSpaceView = lazy(() => import("@/components/spaces/ProjectSpaceView").then((m) => ({ default: m.ProjectSpaceView })));
+const ChatView        = lazy(() => import("@/components/chat/ChatView").then((m) => ({ default: m.ChatView })));
+const DocumentsView   = lazy(() => import("@/components/documents/DocumentsView").then((m) => ({ default: m.DocumentsView })));
+const SettingsView    = lazy(() => import("@/components/settings/SettingsView").then((m) => ({ default: m.SettingsView })));
+const EisenhowerMatrix = lazy(() => import("@/components/matrix/EisenhowerMatrix").then((m) => ({ default: m.EisenhowerMatrix })));
+const GoalsView       = lazy(() => import("@/components/goals/GoalsView").then((m) => ({ default: m.GoalsView })));
+const ExtractionModal = lazy(() => import("@/components/documents/ExtractionModal").then((m) => ({ default: m.ExtractionModal })));
 
 function App() {
   const { currentView, extractionPreview } = useAppStore();
@@ -21,12 +26,18 @@ function App() {
   const { checkConnection } = useLlm();
 
   useEffect(() => {
+    let cancelled = false;
+
     async function bootstrap() {
       try {
         await initVault();
+        if (cancelled) return;
         const config = await loadConfig();
+        if (cancelled) return;
         await loadTasks();
+        if (cancelled) return;
         const spaces = await loadSpaces();
+        if (cancelled) return;
         await checkConnection();
 
         // Create "General" space if it doesn't exist
@@ -51,6 +62,7 @@ function App() {
         const currentTasks = useAppStore.getState().tasks;
         const projectNames = [...new Set(currentTasks.map((t) => t.project).filter(Boolean))];
         for (const projId of projectNames) {
+          if (cancelled) return;
           if (spaceIds.has(projId)) continue;
           const newSpace: ProjectSpace = {
             id: projId,
@@ -67,16 +79,21 @@ function App() {
           spaceIds.add(projId);
         }
 
-        if (config && config.watched_folders.length > 0) {
+        if (!cancelled && config && config.watched_folders.length > 0) {
           await startWatching(config.watched_folders);
         }
       } catch (err) {
-        console.error("Bootstrap failed:", err);
+        if (!cancelled) console.error("Bootstrap failed:", err);
       }
     }
 
     bootstrap();
-  }, []);
+
+    return () => {
+      cancelled = true;
+      invoke("stop_watching").catch(() => {});
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const renderView = () => {
     switch (currentView) {
@@ -84,6 +101,10 @@ function App() {
         return <DashboardView />;
       case "board":
         return <KanbanBoard />;
+      case "matrix":
+        return <EisenhowerMatrix />;
+      case "goals":
+        return <GoalsView />;
       case "archive":
         return <ArchiveView />;
       case "stats":
@@ -105,10 +126,26 @@ function App() {
     <div className="flex h-screen overflow-hidden">
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <div className="flex-1 overflow-auto">{renderView()}</div>
+        <div className="flex-1 overflow-auto">
+          <ErrorBoundary>
+            <Suspense
+              fallback={
+                <div className="flex-1 flex items-center justify-center text-sm text-vault-text-muted h-full">
+                  Loading…
+                </div>
+              }
+            >
+              {renderView()}
+            </Suspense>
+          </ErrorBoundary>
+        </div>
         <StatusBar />
       </div>
-      {extractionPreview && <ExtractionModal />}
+      {extractionPreview && (
+        <Suspense fallback={null}>
+          <ExtractionModal />
+        </Suspense>
+      )}
     </div>
   );
 }

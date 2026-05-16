@@ -26,8 +26,10 @@ import {
   ListPlus,
 } from "lucide-react";
 import { marked } from "marked";
+import DOMPurify from "dompurify";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useAppStore } from "@/stores/appStore";
+import { useShallow } from "zustand/react/shallow";
 import { useVault } from "@/hooks/useVault";
 import { useLlm } from "@/hooks/useLlm";
 import type { ProjectSpaceTab, SpaceNote, Task, StatusColors, TimeEntry, NoteSearchResult } from "@/types";
@@ -55,7 +57,19 @@ export function ProjectSpaceView() {
     spaceNotes,
     upsertSpaceNote,
     config,
-  } = useAppStore();
+  } = useAppStore(
+    useShallow((s) => ({
+      projectSpaces: s.projectSpaces,
+      activeSpaceId: s.activeSpaceId,
+      setActiveSpaceId: s.setActiveSpaceId,
+      setView: s.setView,
+      tasks: s.tasks,
+      setProjectSpaces: s.setProjectSpaces,
+      spaceNotes: s.spaceNotes,
+      upsertSpaceNote: s.upsertSpaceNote,
+      config: s.config,
+    }))
+  );
   const { saveSpace: persistSpace, deleteSpace, saveTask, loadSpaceNotes, saveSpaceNote, deleteSpaceNote, indexSpaceNotes, searchSpaceNotes, spaceIndexStatus } = useVault();
   const { extractTasksFromText, isProcessing: llmProcessing } = useLlm();
 
@@ -87,7 +101,11 @@ export function ProjectSpaceView() {
   const notes: SpaceNote[] = activeSpaceId ? (spaceNotes[activeSpaceId] || []) : [];
 
   useEffect(() => {
-    if (activeSpaceId) loadSpaceNotes(activeSpaceId);
+    if (activeSpaceId) {
+      loadSpaceNotes(activeSpaceId);
+      setEditingNote(null);
+      setActiveTab("overview");
+    }
   }, [activeSpaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load index status when knowledge tab opens
@@ -140,13 +158,13 @@ export function ProjectSpaceView() {
     return tasks.filter((t) => !t.archived && t.project === space.id);
   }, [tasks, space]);
 
-  const openTasks = projectTasks.filter((t) => t.status !== "done");
-  const doneTasks = projectTasks.filter((t) => t.status === "done");
-  const totalHours = projectTasks.reduce((s, t) => s + t.actual_hours, 0);
-  const overdueTasks = openTasks.filter((t) => t.due && t.due < new Date().toISOString().split("T")[0]);
-  const inProgressTasks = openTasks.filter((t) => t.status === "in_progress");
-  const blockedTasks = openTasks.filter((t) => t.status === "blocked");
-  const todoTasks = openTasks.filter((t) => t.status === "todo");
+  const openTasks = useMemo(() => projectTasks.filter((t) => t.status !== "done"), [projectTasks]);
+  const doneTasks = useMemo(() => projectTasks.filter((t) => t.status === "done"), [projectTasks]);
+  const totalHours = useMemo(() => projectTasks.reduce((s, t) => s + t.actual_hours, 0), [projectTasks]);
+  const overdueTasks = useMemo(() => openTasks.filter((t) => t.due && t.due < new Date().toISOString().split("T")[0]), [openTasks]);
+  const inProgressTasks = useMemo(() => openTasks.filter((t) => t.status === "in_progress"), [openTasks]);
+  const blockedTasks = useMemo(() => openTasks.filter((t) => t.status === "blocked"), [openTasks]);
+  const todoTasks = useMemo(() => openTasks.filter((t) => t.status === "todo"), [openTasks]);
 
   // Notes sorted by date
   const dailyNotes = useMemo(
@@ -416,10 +434,11 @@ export function ProjectSpaceView() {
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-hidden flex flex-col">
 
         {/* ── DASHBOARD / OVERVIEW ── */}
         {activeTab === "overview" && (
+          <div className="flex-1 overflow-auto p-6">
           <div className="max-w-5xl space-y-6">
             {/* Status Cards Row */}
             <div className="grid grid-cols-5 gap-3">
@@ -662,11 +681,12 @@ export function ProjectSpaceView() {
               </div>
             )}
           </div>
+          </div>
         )}
 
         {/* ── NOTES / MEETINGS ── */}
         {(activeTab === "notes" || activeTab === "meetings") && (
-          <div className="flex gap-6 max-w-5xl h-full">
+          <div className="flex-1 overflow-hidden flex gap-6 p-6">
             {/* Note List */}
             <div className="w-64 flex-shrink-0 flex flex-col">
               <div className="flex items-center justify-between mb-3">
@@ -809,9 +829,10 @@ export function ProjectSpaceView() {
                       dangerouslySetInnerHTML={{
                         __html: (() => {
                           try {
-                            return marked.parse(editingNote.content || "*Empty note*") as string;
-                          } catch (err) {
-                            return `<div class="text-vault-critical text-sm"><strong>Markdown error:</strong><pre>${String(err)}</pre><hr/><pre>${editingNote.content}</pre></div>`;
+                            const raw = marked.parse(editingNote.content || "*Empty note*") as string;
+                            return DOMPurify.sanitize(raw, { USE_PROFILES: { html: true } });
+                          } catch {
+                            return `<div class="text-vault-critical text-sm"><strong>Markdown parse error.</strong></div>`;
                           }
                         })(),
                       }}
@@ -858,6 +879,7 @@ export function ProjectSpaceView() {
 
         {/* ── DOCUMENTS ── */}
         {activeTab === "documents" && (
+          <div className="flex-1 overflow-auto p-6">
           <div className="max-w-3xl">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-base font-semibold text-vault-text-bright">Documents</h3>
@@ -885,10 +907,12 @@ export function ProjectSpaceView() {
               </div>
             )}
           </div>
+          </div>
         )}
 
         {/* ── TASKS ── */}
         {activeTab === "tasks" && (
+          <div className="flex-1 overflow-auto p-6">
           <div className="max-w-4xl">
             <h3 className="text-base font-semibold text-vault-text-bright mb-4">
               Tasks ({openTasks.length} open, {doneTasks.length} done)
@@ -903,10 +927,12 @@ export function ProjectSpaceView() {
               </div>
             )}
           </div>
+          </div>
         )}
 
         {/* ── AI KNOWLEDGE ── */}
         {activeTab === "knowledge" && (
+          <div className="flex-1 overflow-auto p-6">
           <div className="max-w-3xl space-y-4">
             {/* Header row */}
             <div className="flex items-center justify-between">
@@ -1006,6 +1032,7 @@ export function ProjectSpaceView() {
                 </div>
               </div>
             )}
+          </div>
           </div>
         )}
       </div>

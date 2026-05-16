@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import {
   AlertTriangle,
   Clock,
@@ -15,6 +15,7 @@ import {
   Plus,
 } from "lucide-react";
 import { useAppStore } from "@/stores/appStore";
+import { useShallow } from "zustand/react/shallow";
 import { TaskCard } from "./TaskCard";
 import { TaskModal } from "./TaskModal";
 import type { Task, StatusColors } from "@/types";
@@ -55,30 +56,54 @@ function buildSmartFilters(sc: StatusColors): SmartFilter[] {
   ];
 }
 
+function localDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function getToday(): string {
-  return new Date().toISOString().split("T")[0];
+  return localDate(new Date());
 }
 
 function getWeekFromNow(): string {
   const d = new Date();
   d.setDate(d.getDate() + 7);
-  return d.toISOString().split("T")[0];
+  return localDate(d);
 }
 
 function getWeekAgo(): string {
   const d = new Date();
   d.setDate(d.getDate() - 7);
-  return d.toISOString().split("T")[0];
+  return localDate(d);
+}
+
+function getWeekStart(): string {
+  const d = new Date();
+  const day = d.getDay();
+  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+  return localDate(d);
+}
+
+function getWeekEnd(): string {
+  const d = new Date();
+  const day = d.getDay();
+  d.setDate(d.getDate() + (day === 0 ? 0 : 7 - day));
+  return localDate(d);
 }
 
 export function DashboardView() {
-  const { tasks, config } = useAppStore();
+  const { tasks, config } = useAppStore(
+    useShallow((s) => ({ tasks: s.tasks, config: s.config }))
+  );
   const userName = config.user_name?.toLowerCase() || "";
   const statusColors: StatusColors = { ...DEFAULT_STATUS_COLORS, ...(config.status_colors || {}) };
   const smartFilters = useMemo(() => buildSmartFilters(statusColors), [statusColors]);
   const [activeFilter, setActiveFilter] = useState<FilterId>("my_todo");
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [showNewTask, setShowNewTask] = useState(false);
+  const handleTaskClick = useCallback((task: Task) => setEditingTask(task), []);
 
   const activeTasks = useMemo(
     () => tasks.filter((t) => !t.archived),
@@ -221,10 +246,16 @@ export function DashboardView() {
     return Object.entries(map).sort((a, b) => b[1].open - a[1].open);
   }, [activeTasks]);
 
-  // Total hours tracked
-  const totalHours = useMemo(
-    () => activeTasks.reduce((sum, t) => sum + t.actual_hours, 0),
-    [activeTasks]
+  const weekStart = getWeekStart();
+  const weekEnd = getWeekEnd();
+
+  // Hours tracked for tasks due within the current Mon–Sun week
+  const weekHours = useMemo(
+    () =>
+      activeTasks
+        .filter((t) => t.due && t.due >= weekStart && t.due <= weekEnd)
+        .reduce((sum, t) => sum + t.actual_hours, 0),
+    [activeTasks, weekStart, weekEnd]
   );
 
   const activeFilterMeta = smartFilters.find((f) => f.id === activeFilter)!;
@@ -236,7 +267,7 @@ export function DashboardView() {
         <div>
           <h2 className="text-xl font-bold text-vault-text-bright">Dashboard</h2>
           <p className="text-xs text-vault-text-muted mt-0.5">
-            {filterCounts.all_open} open tasks / {filterCounts.overdue > 0 ? `${filterCounts.overdue} overdue / ` : ""}{totalHours.toFixed(1)}h tracked
+            {filterCounts.all_open} open tasks / {filterCounts.overdue > 0 ? `${filterCounts.overdue} overdue / ` : ""}{weekHours.toFixed(1)}h this week
           </p>
         </div>
         <button
@@ -326,14 +357,14 @@ export function DashboardView() {
           </div>
 
           {/* Tracked Time */}
-          {totalHours > 0 && (
+          {weekHours > 0 && (
             <div className="mt-6 px-3">
               <p className="text-[10px] uppercase tracking-wider font-semibold text-vault-text-muted mb-1 flex items-center gap-1">
                 <TrendingUp className="w-3 h-3" />
-                Time Tracked
+                This Week
               </p>
               <p className="text-lg font-bold text-vault-text-bright">
-                {totalHours.toFixed(1)}
+                {weekHours.toFixed(1)}
                 <span className="text-xs text-vault-text-muted font-normal ml-1">hours</span>
               </p>
             </div>
@@ -374,7 +405,7 @@ export function DashboardView() {
                 <TaskCard
                   key={task.id}
                   task={task}
-                  onClick={() => setEditingTask(task)}
+                  onClick={handleTaskClick}
                 />
               ))}
             </div>

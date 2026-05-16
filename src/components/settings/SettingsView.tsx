@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import {
   Save,
   RefreshCw,
@@ -17,7 +18,38 @@ import {
   Circle,
   Download,
   ArrowUpCircle,
+  Server,
+  Copy,
+  Eye,
+  EyeOff,
+  RotateCcw,
+  GripVertical,
+  PanelLeft,
+  Settings,
+  Gauge,
+  LayoutDashboard,
+  Grid2x2,
+  Target,
+  BarChart3,
+  MessageSquare,
+  FileText,
+  Archive,
 } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import type { DragEndEvent } from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { check as checkUpdate, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { getVersion } from "@tauri-apps/api/app";
@@ -70,6 +102,61 @@ const COLOR_PRESETS = [
   "#bc8cff", "#9b59b6",
 ];
 
+const CONTROLLABLE_NAV: { id: string; label: string; icon: typeof Gauge }[] = [
+  { id: "dashboard", label: "Dashboard", icon: Gauge },
+  { id: "board", label: "Board", icon: LayoutDashboard },
+  { id: "matrix", label: "Matrix", icon: Grid2x2 },
+  { id: "goals", label: "Goals", icon: Target },
+  { id: "stats", label: "Weekly Review", icon: BarChart3 },
+  { id: "chat", label: "Chat", icon: MessageSquare },
+  { id: "documents", label: "Documents", icon: FileText },
+  { id: "archive", label: "Archive", icon: Archive },
+];
+
+function SortableNavRow({
+  item,
+  disabled,
+  onToggle,
+}: {
+  item: (typeof CONTROLLABLE_NAV)[number];
+  disabled: boolean;
+  onToggle: () => void;
+}) {
+  const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
+  const Icon = item.icon;
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}
+      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors touch-none ${
+        disabled ? "opacity-40" : ""
+      } hover:bg-vault-bg`}
+    >
+      <span
+        {...listeners}
+        className="cursor-grab text-vault-text-muted hover:text-vault-text flex-shrink-0"
+      >
+        <GripVertical className="w-4 h-4" />
+      </span>
+      <Icon className="w-4 h-4 text-vault-text-muted flex-shrink-0" />
+      <span className="flex-1 text-sm text-vault-text">{item.label}</span>
+      <button
+        onClick={onToggle}
+        className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${
+          disabled ? "bg-vault-border" : "bg-vault-accent"
+        }`}
+        title={disabled ? "Enable" : "Disable"}
+      >
+        <div
+          className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform shadow ${
+            disabled ? "translate-x-0.5" : "translate-x-4"
+          }`}
+        />
+      </button>
+    </div>
+  );
+}
+
 export function SettingsView() {
   const { config, setConfig, models, llmConnected } = useAppStore();
   const { saveConfig, startWatching, changeVaultPath } = useVault();
@@ -82,14 +169,54 @@ export function SettingsView() {
   const [saved, setSaved] = useState(false);
   const [editingStatusColor, setEditingStatusColor] = useState<TaskStatus | null>(null);
 
+  const navSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+
+  const orderedNav = useMemo(() => {
+    const order = form.nav_order ?? [];
+    if (order.length === 0) return CONTROLLABLE_NAV;
+    return [
+      ...order.map((id) => CONTROLLABLE_NAV.find((i) => i.id === id)).filter(Boolean) as typeof CONTROLLABLE_NAV,
+      ...CONTROLLABLE_NAV.filter((i) => !order.includes(i.id)),
+    ];
+  }, [form.nav_order]);
+
+  const handleNavDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = orderedNav.findIndex((i) => i.id === active.id);
+    const newIndex = orderedNav.findIndex((i) => i.id === over.id);
+    const next = arrayMove(orderedNav, oldIndex, newIndex).map((i) => i.id);
+    const updated = { ...form, nav_order: next };
+    setForm(updated);
+    setConfig(updated);
+  }, [orderedNav, form, setConfig]);
+
+  const handleNavToggle = useCallback((id: string) => {
+    const disabled = new Set(form.nav_disabled ?? []);
+    if (disabled.has(id)) disabled.delete(id);
+    else disabled.add(id);
+    const updated = { ...form, nav_disabled: [...disabled] };
+    setForm(updated);
+    setConfig(updated);
+  }, [form, setConfig]);
+
   const [appVersion, setAppVersion] = useState<string>("");
+  const [binaryChecksum, setBinaryChecksum] = useState<string>("");
+  const [checksumCopied, setChecksumCopied] = useState(false);
   const [updateChecking, setUpdateChecking] = useState(false);
   const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null);
   const [updateStatus, setUpdateStatus] = useState<"idle" | "up-to-date" | "downloading" | "done">("idle");
   const [downloadProgress, setDownloadProgress] = useState(0);
 
+  const [mcpTokenVisible, setMcpTokenVisible] = useState(false);
+  const [mcpCopied, setMcpCopied] = useState(false);
+  const [mcpConfigCopied, setMcpConfigCopied] = useState(false);
+  const [mcpTokenRegenerating, setMcpTokenRegenerating] = useState(false);
+  const [mcpInfo, setMcpInfo] = useState<{ token: string; port: number; binary_path: string; enabled: boolean; http_enabled: boolean; vault_path: string } | null>(null);
+
   useEffect(() => {
     getVersion().then(setAppVersion).catch(() => {});
+    invoke<string>("get_binary_checksum").then(setBinaryChecksum).catch(() => {});
   }, []);
 
   const handleCheckUpdate = useCallback(async () => {
@@ -189,6 +316,98 @@ export function SettingsView() {
     }));
     setEditingStatusColor(null);
   };
+
+  const handleMcpToggle = useCallback(async (enabled: boolean) => {
+    const toSave = { ...form, mcp_enabled: enabled };
+    setForm(toSave);
+    await saveConfig(toSave);
+    setConfig(toSave);
+    try {
+      if (enabled) {
+        await invoke("start_mcp_server");
+        const info = await invoke<{ token: string; port: number; binary_path: string; enabled: boolean; http_enabled: boolean; vault_path: string }>("get_mcp_info");
+        setMcpInfo(info);
+      } else {
+        await invoke("stop_mcp_server");
+        setMcpInfo(null);
+      }
+    } catch (e) {
+      console.error("MCP toggle error:", e);
+    }
+  }, [form, saveConfig, setConfig]);
+
+  const handleMcpHttpToggle = useCallback(async (httpEnabled: boolean) => {
+    const toSave = { ...form, mcp_http_enabled: httpEnabled };
+    setForm(toSave);
+    await saveConfig(toSave);
+    setConfig(toSave);
+    try {
+      if (httpEnabled) {
+        await invoke("start_mcp_server");
+        const info = await invoke<{ token: string; port: number; binary_path: string; enabled: boolean; http_enabled: boolean; vault_path: string }>("get_mcp_info");
+        setMcpInfo(info);
+      } else {
+        await invoke("stop_mcp_server");
+        setMcpInfo(null);
+      }
+    } catch (e) {
+      console.error("MCP HTTP toggle error:", e);
+    }
+  }, [form, saveConfig, setConfig]);
+
+  const handleCopyToken = useCallback(() => {
+    const token = form.mcp_token ?? "";
+    navigator.clipboard.writeText(token).then(() => {
+      setMcpCopied(true);
+      setTimeout(() => setMcpCopied(false), 2000);
+    });
+  }, [form.mcp_token]);
+
+  const handleRegenerateToken = useCallback(async () => {
+    setMcpTokenRegenerating(true);
+    try {
+      // Stop the server so the old token is no longer accepted.
+      if (form.mcp_enabled) await invoke("stop_mcp_server");
+      const newToken = await invoke<string>("regenerate_mcp_token");
+      const updated = { ...form, mcp_token: newToken };
+      setForm(updated);
+      setConfig(updated);
+      // Restart the server with the new token.
+      if (form.mcp_enabled) {
+        await invoke("start_mcp_server");
+        const info = await invoke<{ token: string; port: number; binary_path: string; enabled: boolean; http_enabled: boolean; vault_path: string }>("get_mcp_info");
+        setMcpInfo(info);
+      }
+    } catch (e) {
+      console.error("Failed to regenerate MCP token:", e);
+    } finally {
+      setMcpTokenRegenerating(false);
+    }
+  }, [form, setConfig]);
+
+  const handleCopyClaudeConfig = useCallback(async () => {
+    let info = mcpInfo;
+    if (!info) {
+      try {
+        info = await invoke<{ token: string; port: number; binary_path: string; enabled: boolean; http_enabled: boolean; vault_path: string }>("get_mcp_info");
+        setMcpInfo(info);
+      } catch {
+        return;
+      }
+    }
+    const config = JSON.stringify({
+      mcpServers: {
+        vaultmind: {
+          command: info.binary_path,
+          args: ["--stdio", "--vault", info.vault_path],
+        },
+      },
+    }, null, 2);
+    navigator.clipboard.writeText(config).then(() => {
+      setMcpConfigCopied(true);
+      setTimeout(() => setMcpConfigCopied(false), 2000);
+    });
+  }, [mcpInfo]);
 
   const activeModel = models.find((m) => m.id === form.active_model);
   const activeModelName = activeModel
@@ -596,6 +815,37 @@ export function SettingsView() {
           </div>
         </section>
 
+        {/* Navigation */}
+        <section className="space-y-4">
+          <h3 className="text-sm font-semibold text-vault-text uppercase tracking-wide flex items-center gap-2">
+            <PanelLeft className="w-4 h-4 text-vault-accent" />
+            Navigation
+          </h3>
+          <div className="card-base p-3 space-y-1">
+            <p className="text-xs text-vault-text-muted px-1 pb-2">
+              Drag to reorder. Toggle to show or hide items in the sidebar. Settings is always visible.
+            </p>
+            <DndContext sensors={navSensors} collisionDetection={closestCenter} onDragEnd={handleNavDragEnd}>
+              <SortableContext items={orderedNav.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+                {orderedNav.map((item) => (
+                  <SortableNavRow
+                    key={item.id}
+                    item={item}
+                    disabled={(form.nav_disabled ?? []).includes(item.id)}
+                    onToggle={() => handleNavToggle(item.id)}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
+            <div className="flex items-center gap-3 px-3 py-2.5 opacity-30">
+              <GripVertical className="w-4 h-4 text-vault-text-muted" />
+              <Settings className="w-4 h-4 text-vault-text-muted" />
+              <span className="flex-1 text-sm text-vault-text">Settings</span>
+              <span className="text-[10px] text-vault-text-muted italic">pinned</span>
+            </div>
+          </div>
+        </section>
+
         {/* App Updates */}
         <section className="space-y-4">
           <h3 className="text-sm font-semibold text-vault-text uppercase tracking-wide flex items-center gap-2">
@@ -617,6 +867,28 @@ export function SettingsView() {
             )}
           </div>
 
+          {binaryChecksum && (
+            <div className="flex items-center justify-between pt-1 border-t border-vault-border">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs text-vault-text-muted mb-0.5">SHA-256 checksum</p>
+                <p className="text-[11px] font-mono text-vault-text-muted break-all leading-relaxed">
+                  {binaryChecksum}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(binaryChecksum).catch(() => {});
+                  setChecksumCopied(true);
+                  setTimeout(() => setChecksumCopied(false), 2000);
+                }}
+                className="btn-ghost p-1.5 ml-2 flex-shrink-0"
+                title="Copy checksum"
+              >
+                {checksumCopied ? <Check className="w-3.5 h-3.5 text-vault-success" /> : <Copy className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          )}
+
           {pendingUpdate ? (
             <div className="bg-vault-accent/10 border border-vault-accent/30 rounded-lg p-4 space-y-3">
               <div className="flex items-center gap-2">
@@ -625,6 +897,14 @@ export function SettingsView() {
                   Version {pendingUpdate.version} available
                 </p>
               </div>
+              {pendingUpdate.body && (
+                <div className="border-t border-vault-accent/20 pt-3">
+                  <p className="text-[10px] uppercase tracking-wider text-vault-text-muted font-semibold mb-1.5">Release Notes</p>
+                  <div className="text-xs text-vault-text-muted whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto">
+                    {pendingUpdate.body}
+                  </div>
+                </div>
+              )}
               {updateStatus === "downloading" ? (
                 <div className="space-y-1">
                   <div className="h-1.5 bg-vault-border rounded-full overflow-hidden">
@@ -655,6 +935,101 @@ export function SettingsView() {
                 : <><RefreshCw className="w-3.5 h-3.5" /> Check for Updates</>}
             </button>
           )}
+          </div>
+        </section>
+
+        {/* MCP Server */}
+        <section className="space-y-4">
+          <h3 className="text-sm font-semibold text-vault-text uppercase tracking-wide flex items-center gap-2">
+            <Server className="w-4 h-4 text-vault-accent" />
+            MCP Server
+          </h3>
+          <div className="card-base p-4 space-y-4">
+            <p className="text-xs text-vault-text-muted">
+              Allow Claude and other AI clients to read and write your vault over the Model Context Protocol.
+            </p>
+
+            {/* Master toggle */}
+            <label className="flex items-center justify-between cursor-pointer">
+              <span className="text-sm text-vault-text">Enable MCP</span>
+              <div
+                onClick={() => handleMcpToggle(!form.mcp_enabled)}
+                className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer ${form.mcp_enabled ? "bg-vault-accent" : "bg-vault-border"}`}
+              >
+                <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform shadow ${form.mcp_enabled ? "translate-x-5" : "translate-x-0.5"}`} />
+              </div>
+            </label>
+
+            {form.mcp_enabled && (
+              <div className="space-y-4 pt-1">
+
+                {/* Token */}
+                <div>
+                  <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
+                    Bearer Token
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      readOnly
+                      type={mcpTokenVisible ? "text" : "password"}
+                      value={form.mcp_token ?? ""}
+                      className="input-base flex-1 font-mono text-xs"
+                    />
+                    <button onClick={() => setMcpTokenVisible((v) => !v)} className="btn-ghost p-2" title="Show / hide token">
+                      {mcpTokenVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                    <button onClick={handleCopyToken} className="btn-ghost flex items-center gap-1 text-xs px-2" title="Copy token">
+                      {mcpCopied ? <Check className="w-3.5 h-3.5 text-vault-success" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                    <button
+                      onClick={handleRegenerateToken}
+                      disabled={mcpTokenRegenerating}
+                      className="btn-ghost flex items-center gap-1 text-xs px-2 text-vault-warning hover:text-vault-warning"
+                      title="Regenerate token — invalidates the current token immediately"
+                    >
+                      {mcpTokenRegenerating
+                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        : <RotateCcw className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-vault-text-muted mt-1">
+                    Rotating the token invalidates the current one — update any MCP client configs that use it.
+                  </p>
+                </div>
+
+                {/* Claude Desktop stdio config */}
+                <button onClick={handleCopyClaudeConfig} className="btn-secondary flex items-center gap-1.5 text-xs">
+                  {mcpConfigCopied ? <Check className="w-3.5 h-3.5 text-vault-success" /> : <Copy className="w-3.5 h-3.5" />}
+                  Copy Claude Desktop config
+                </button>
+
+                {/* HTTP server sub-toggle */}
+                <div className="border-t border-vault-border pt-4 space-y-3">
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <div>
+                      <p className="text-sm text-vault-text">Enable HTTP server</p>
+                      <p className="text-[11px] text-vault-text-muted">
+                        Exposes MCP over HTTP on port 7532. Disabled by default — only needed for non-stdio clients.
+                      </p>
+                    </div>
+                    <div
+                      onClick={() => handleMcpHttpToggle(!form.mcp_http_enabled)}
+                      className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer flex-shrink-0 ml-4 ${form.mcp_http_enabled ? "bg-vault-accent" : "bg-vault-border"}`}
+                    >
+                      <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform shadow ${form.mcp_http_enabled ? "translate-x-5" : "translate-x-0.5"}`} />
+                    </div>
+                  </label>
+
+                  {form.mcp_http_enabled && (
+                    <div className="flex items-center gap-2 text-xs text-vault-text-muted">
+                      <span className="w-2 h-2 rounded-full bg-vault-success inline-block" />
+                      <span>HTTP server running on port 7532</span>
+                    </div>
+                  )}
+                </div>
+
+              </div>
+            )}
           </div>
         </section>
 

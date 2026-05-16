@@ -16,7 +16,7 @@ pub struct NoteSearchResult {
     pub score: f32,
 }
 
-// ── On-disk index format ─────────────────────────────────────────────────
+// ── On-disk cache format ─────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct IndexEntry {
@@ -29,51 +29,93 @@ struct IndexEntry {
     embedding: Vec<f32>,
 }
 
+/// JSON file that caches embeddings for incremental re-indexing.
+/// Structurally identical to the old NoteIndex so existing search_index.json
+/// files deserialise into this type without any data loss.
 #[derive(Debug, Serialize, Deserialize, Default)]
-struct NoteIndex {
+struct EmbedCache {
     entries: Vec<IndexEntry>,
 }
 
-// ── Index persistence ────────────────────────────────────────────────────
+// ── Cache persistence ────────────────────────────────────────────────────
 
-fn index_path(space_id: &str) -> std::path::PathBuf {
-    space_dir(space_id).join("search_index.json")
+fn embed_cache_path(space_id: &str) -> std::path::PathBuf {
+    space_dir(space_id).join("embed_cache.json")
 }
 
-fn load_index(space_id: &str) -> NoteIndex {
-    let path = index_path(space_id);
-    if !path.exists() {
-        return NoteIndex::default();
+/// Load the embedding cache. Silently migrates from the old search_index.json
+/// on first access — no re-indexing required for existing users.
+fn load_cache(space_id: &str) -> EmbedCache {
+    let new_path = embed_cache_path(space_id);
+    if new_path.exists() {
+        let content = fs::read_to_string(&new_path).unwrap_or_default();
+        return serde_json::from_str(&content).unwrap_or_default();
     }
-    let content = fs::read_to_string(&path).unwrap_or_default();
-    serde_json::from_str(&content).unwrap_or_default()
+
+    // One-time migration: old path is search_index.json (same JSON shape).
+    let old_path = space_dir(space_id).join("search_index.json");
+    if old_path.exists() {
+        let content = fs::read_to_string(&old_path).unwrap_or_default();
+        let cache: EmbedCache = serde_json::from_str(&content).unwrap_or_default();
+        // Persist under the new name so this branch is only hit once.
+        let _ = save_cache(space_id, &cache);
+        return cache;
+    }
+
+    EmbedCache::default()
 }
 
-fn save_index(space_id: &str, index: &NoteIndex) -> Result<(), String> {
-    let content = serde_json::to_string(index)
-        .map_err(|e| format!("Failed to serialize index: {}", e))?;
-    fs::write(index_path(space_id), content)
-        .map_err(|e| format!("Failed to write index: {}", e))?;
+fn save_cache(space_id: &str, cache: &EmbedCache) -> Result<(), String> {
+    let content = serde_json::to_string(cache)
+        .map_err(|e| format!("Failed to serialize cache: {}", e))?;
+    fs::write(embed_cache_path(space_id), content)
+        .map_err(|e| format!("Failed to write cache: {}", e))?;
     Ok(())
 }
 
-// ── Math ─────────────────────────────────────────────────────────────────
+// ── turbovec index builder ───────────────────────────────────────────────
 
-fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
-    if a.len() != b.len() || a.is_empty() {
-        return 0.0;
+/// Build a TurboQuantIndex from the entries in the cache.
+///
+/// Returns `None` when there are no valid (non-empty) embeddings.
+/// Returns the index and a position map: `pos_map[turbovec_position]` is the
+/// index into `entries` for that vector, allowing result indices to be mapped
+/// back to note metadata after search.
+fn build_turbovec(
+    entries: &[IndexEntry],
+) -> Option<(turbovec::TurboQuantIndex, Vec<usize>)> {
+    // Filter to entries with non-empty embeddings and a consistent dimension.
+    let first_dim = entries.iter().find_map(|e| {
+        if e.embedding.is_empty() { None } else { Some(e.embedding.len()) }
+    })?;
+
+    let valid: Vec<usize> = entries
+        .iter()
+        .enumerate()
+        .filter_map(|(i, e)| {
+            if e.embedding.len() == first_dim { Some(i) } else { None }
+        })
+        .collect();
+
+    if valid.is_empty() {
+        return None;
     }
-    let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
-    let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
-    let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
-    if norm_a == 0.0 || norm_b == 0.0 {
-        0.0
-    } else {
-        dot / (norm_a * norm_b)
+
+    // Build a flat f32 array: [vec_0, vec_1, ..., vec_n] each of length first_dim.
+    let mut flat = Vec::with_capacity(valid.len() * first_dim);
+    for &idx in &valid {
+        flat.extend_from_slice(&entries[idx].embedding);
     }
+
+    let mut index = turbovec::TurboQuantIndex::new(first_dim, 4);
+    index.add(&flat);
+    index.prepare(); // pre-warm SIMD caches for deterministic first-query latency
+
+    Some((index, valid))
 }
 
-/// Cheap change-detection fingerprint for a note.
+// ── Change-detection fingerprint ─────────────────────────────────────────
+
 fn fingerprint(title: &str, content: &str) -> String {
     let preview = &content[..content.len().min(128)];
     format!("{}:{}:{}", title.len(), content.len(), preview)
@@ -98,9 +140,9 @@ struct EmbedData {
 }
 
 async fn fetch_embeddings(texts: Vec<String>, lm_url: &str) -> Result<Vec<Vec<f32>>, String> {
-    let client = reqwest::Client::new();
+    crate::llm::validate_llm_url(lm_url)?;
+    let client = crate::llm::http_client();
     let req = EmbedRequest {
-        // LM Studio ignores the model field; any name works.
         model: "text-embedding-ada-002".to_string(),
         input: texts,
     };
@@ -109,13 +151,17 @@ async fn fetch_embeddings(texts: Vec<String>, lm_url: &str) -> Result<Vec<Vec<f3
         .json(&req)
         .send()
         .await
-        .map_err(|e| format!("Embedding API unreachable: {}. Is LM Studio running with an embedding model loaded?", e))?;
+        .map_err(|e| format!(
+            "Embedding API unreachable: {}. Is LM Studio running with an embedding model loaded?",
+            e
+        ))?;
 
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
         return Err(format!(
-            "Embedding API returned HTTP {}: {}. Load an embedding model in LM Studio (e.g. nomic-embed-text or all-minilm).",
+            "Embedding API returned HTTP {}: {}. \
+             Load an embedding model in LM Studio (e.g. nomic-embed-text or all-minilm).",
             status, body
         ));
     }
@@ -141,10 +187,10 @@ pub async fn index_space_notes(space_id: String) -> Result<usize, String> {
         return Ok(0);
     }
 
-    let mut index = load_index(&space_id);
+    let mut cache = load_cache(&space_id);
 
-    // Build lookup: note_id → existing fingerprint
-    let existing: HashMap<String, String> = index
+    // Build fingerprint lookup: note_id → existing fingerprint
+    let existing: HashMap<String, String> = cache
         .entries
         .iter()
         .map(|e| (e.note_id.clone(), e.fingerprint.clone()))
@@ -161,11 +207,17 @@ pub async fn index_space_notes(space_id: String) -> Result<usize, String> {
         .collect();
 
     if dirty.is_empty() {
+        // Still prune entries for deleted notes even if nothing needs re-embedding.
+        let live_ids: HashSet<String> = notes.iter().map(|n| n.id.clone()).collect();
+        cache.entries.retain(|e| live_ids.contains(&e.note_id));
+        save_cache(&space_id, &cache)?;
         return Ok(0);
     }
 
-    // Embed in batches of 50
+    // Embed dirty notes in batches of 50
     let mut indexed = 0usize;
+    let mut new_dim: Option<usize> = None;
+
     for batch in dirty.chunks(50) {
         let texts: Vec<String> = batch
             .iter()
@@ -175,9 +227,25 @@ pub async fn index_space_notes(space_id: String) -> Result<usize, String> {
             })
             .collect();
 
-        let embeddings = fetch_embeddings(texts, &config.lm_studio_url).await?;
+        let embeddings = match fetch_embeddings(texts, &config.lm_studio_url).await {
+            Ok(e) => e,
+            Err(e) => {
+                eprintln!("[search] Embedding batch failed, skipping (will retry on next index): {}", e);
+                continue;
+            }
+        };
 
         for (note, embedding) in batch.iter().zip(embeddings) {
+            // Track the embedding dimension of newly-produced vectors.
+            if let Some(d) = new_dim {
+                if embedding.len() != d {
+                    // Dimension inconsistency within a single batch — skip.
+                    continue;
+                }
+            } else {
+                new_dim = Some(embedding.len());
+            }
+
             let preview: String = note
                 .content
                 .lines()
@@ -196,21 +264,27 @@ pub async fn index_space_notes(space_id: String) -> Result<usize, String> {
                 fingerprint: fingerprint(&note.title, &note.content),
                 embedding,
             };
-            index.entries.retain(|e| e.note_id != note.id);
-            index.entries.push(entry);
+            cache.entries.retain(|e| e.note_id != note.id);
+            cache.entries.push(entry);
             indexed += 1;
         }
     }
 
-    // Drop entries for notes that no longer exist
-    let live_ids: HashSet<String> = notes.iter().map(|n| n.id.clone()).collect();
-    index.entries.retain(|e| live_ids.contains(&e.note_id));
+    // If the embedding model changed (dimension mismatch), drop stale entries
+    // so the cache stays dimension-homogeneous.
+    if let Some(dim) = new_dim {
+        cache.entries.retain(|e| e.embedding.len() == dim || e.embedding.is_empty());
+    }
 
-    save_index(&space_id, &index)?;
+    // Drop entries for notes that no longer exist.
+    let live_ids: HashSet<String> = notes.iter().map(|n| n.id.clone()).collect();
+    cache.entries.retain(|e| live_ids.contains(&e.note_id));
+
+    save_cache(&space_id, &cache)?;
     Ok(indexed)
 }
 
-/// Semantic search over indexed notes for a space.
+/// Semantic search over indexed notes for a space using turbovec.
 #[tauri::command]
 pub async fn search_space_notes(
     space_id: String,
@@ -231,39 +305,45 @@ pub async fn search_space_notes(
         .next()
         .ok_or("No embedding returned for query")?;
 
-    let index = load_index(&space_id);
-    if index.entries.is_empty() {
+    let cache = load_cache(&space_id);
+    if cache.entries.is_empty() {
         return Err("No index yet — click Index Notes first.".to_string());
     }
 
-    let mut scored: Vec<(f32, &IndexEntry)> = index
-        .entries
+    let (tv_index, pos_map) = build_turbovec(&cache.entries)
+        .ok_or("No index yet — click Index Notes first.")?;
+
+    // Clamp k to the number of indexed vectors to avoid out-of-bounds.
+    let k = top_k.min(pos_map.len());
+
+    let results = tv_index.search(&query_vec, k);
+    let indices = results.indices_for_query(0);
+    let scores  = results.scores_for_query(0);
+
+    Ok(indices
         .iter()
-        .map(|e| (cosine_similarity(&query_vec, &e.embedding), e))
-        .collect();
-
-    scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-
-    Ok(scored
-        .into_iter()
-        .take(top_k)
-        .map(|(score, e)| NoteSearchResult {
-            note_id: e.note_id.clone(),
-            title: e.title.clone(),
-            date: e.date.clone(),
-            note_type: e.note_type.clone(),
-            preview: e.preview.clone(),
-            score,
+        .zip(scores.iter())
+        .filter_map(|(&tv_pos, &score)| {
+            let entry_idx = *pos_map.get(tv_pos as usize)?;
+            let e = cache.entries.get(entry_idx)?;
+            Some(NoteSearchResult {
+                note_id:   e.note_id.clone(),
+                title:     e.title.clone(),
+                date:      e.date.clone(),
+                note_type: e.note_type.clone(),
+                preview:   e.preview.clone(),
+                score,
+            })
         })
         .collect())
 }
 
-/// How many notes are in the index and when was it last written.
+/// How many notes are in the cache and when was it last written.
 #[tauri::command]
 pub fn space_index_status(space_id: String) -> serde_json::Value {
-    let path = index_path(&space_id);
-    let index = load_index(&space_id);
-    let indexed_count = index.entries.len();
+    let path = embed_cache_path(&space_id);
+    let cache = load_cache(&space_id);
+    let indexed_count = cache.entries.len();
     let last_modified = path
         .metadata()
         .ok()

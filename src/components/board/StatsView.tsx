@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef } from "react";
 import {
   BarChart3,
   ChevronLeft,
@@ -13,6 +13,8 @@ import {
   Zap,
 } from "lucide-react";
 import { useAppStore } from "@/stores/appStore";
+import { useShallow } from "zustand/react/shallow";
+import { useVault } from "@/hooks/useVault";
 import type { Task, StatusColors } from "@/types";
 import { PROJECT_COLORS, DEFAULT_STATUS_COLORS } from "@/types";
 
@@ -37,7 +39,10 @@ function getWeekDates(offset: number): { start: Date; end: Date; days: Date[] } 
 }
 
 function fmt(d: Date): string {
-  return d.toISOString().split("T")[0];
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function dayLabel(d: Date): string {
@@ -45,14 +50,29 @@ function dayLabel(d: Date): string {
 }
 
 export function StatsView() {
-  const { tasks, projectSpaces, config } = useAppStore();
+  const { tasks, projectSpaces, config } = useAppStore(
+    useShallow((s) => ({ tasks: s.tasks, projectSpaces: s.projectSpaces, config: s.config }))
+  );
+  const { saveConfig } = useVault();
   const sc: StatusColors = { ...DEFAULT_STATUS_COLORS, ...(config.status_colors || {}) };
   const [weekOffset, setWeekOffset] = useState(0);
+  const [editingTarget, setEditingTarget] = useState(false);
+  const [targetInput, setTargetInput] = useState("");
+  const targetRef = useRef<HTMLInputElement>(null);
+  const weeklyTarget = config.weekly_hours_target ?? 38;
+
+  const commitTarget = () => {
+    const val = parseInt(targetInput, 10);
+    if (!isNaN(val) && val >= 1 && val <= 168) {
+      saveConfig({ ...config, weekly_hours_target: val });
+    }
+    setEditingTarget(false);
+  };
 
   const { start, end, days } = useMemo(() => getWeekDates(weekOffset), [weekOffset]);
   const weekLabel = `${start.toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${end.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
 
-  const allTasks = tasks.filter((t) => !t.archived);
+  const allTasks = useMemo(() => tasks.filter((t) => !t.archived), [tasks]);
 
   // Tasks completed this week
   const completedThisWeek = useMemo(() => {
@@ -78,12 +98,13 @@ export function StatsView() {
       if (total > 0) map[space.name] = total;
     }
 
-    // Also add task tracked hours
+    // Task actual_hours for tasks due this week (used when no explicit time entries)
     for (const t of allTasks) {
-      if (t.actual_hours > 0) {
+      if (t.actual_hours > 0 && t.due && t.due >= s && t.due <= e) {
         const proj = t.project || "Unassigned";
-        const name = projectSpaces.find((s) => s.id === proj)?.name || proj;
-        map[name] = (map[name] || 0) + t.actual_hours;
+        const name = projectSpaces.find((sp) => sp.id === proj)?.name || proj;
+        if (!map[name]) map[name] = 0;
+        map[name] += t.actual_hours;
       }
     }
 
@@ -91,6 +112,8 @@ export function StatsView() {
   }, [projectSpaces, allTasks, start, end]);
 
   const totalHoursThisWeek = hoursByProject.reduce((s, [, h]) => s + h, 0);
+  const remaining = weeklyTarget - totalHoursThisWeek;
+  const hoursLoggedPct = weeklyTarget > 0 ? (totalHoursThisWeek / weeklyTarget) * 100 : 0;
 
   // Tasks by status
   const statusCounts = useMemo(() => {
@@ -161,7 +184,35 @@ export function StatsView() {
             <BarChart3 className="w-6 h-6 text-vault-accent" />
             <div>
               <h2 className="text-xl font-bold text-vault-text-bright">Weekly Review</h2>
-              <p className="text-xs text-vault-text-muted">{weekLabel}</p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <p className="text-xs text-vault-text-muted">{weekLabel}</p>
+                <span className="text-vault-border text-xs">·</span>
+                {editingTarget ? (
+                  <input
+                    ref={targetRef}
+                    type="number"
+                    min={1}
+                    max={168}
+                    value={targetInput}
+                    onChange={(e) => setTargetInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") commitTarget();
+                      if (e.key === "Escape") setEditingTarget(false);
+                    }}
+                    onBlur={commitTarget}
+                    className="input-base text-xs w-16 py-0.5 px-1.5"
+                  />
+                ) : (
+                  <button
+                    onClick={() => { setTargetInput(String(weeklyTarget)); setEditingTarget(true); setTimeout(() => targetRef.current?.select(), 0); }}
+                    className="flex items-center gap-1 text-xs text-vault-text-muted hover:text-vault-text"
+                    title="Click to change weekly target"
+                  >
+                    <Zap className="w-3 h-3" />
+                    {weeklyTarget}h/week
+                  </button>
+                )}
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -187,10 +238,33 @@ export function StatsView() {
             <p className="text-3xl font-bold text-vault-text-bright">{statusCounts.done}</p>
             <p className="text-[10px] text-vault-text-muted">Tasks Completed</p>
           </div>
-          <div className="card-base p-4 text-center">
-            <Clock className="w-5 h-5 mx-auto mb-1 text-vault-accent" />
-            <p className="text-3xl font-bold text-vault-text-bright">{totalHoursThisWeek.toFixed(1)}h</p>
-            <p className="text-[10px] text-vault-text-muted">Hours Logged</p>
+          <div className="card-base p-4">
+            <div className="flex items-center justify-between mb-1">
+              <Clock className="w-5 h-5 text-vault-accent" />
+              {weekOffset === 0 && (
+                <span className={`text-[10px] font-semibold ${remaining < 0 ? "text-vault-critical" : "text-vault-success"}`}>
+                  {remaining >= 0 ? `${remaining.toFixed(1)}h remaining` : `${Math.abs(remaining).toFixed(1)}h over`}
+                </span>
+              )}
+            </div>
+            <p className="text-3xl font-bold text-vault-text-bright text-center">
+              {totalHoursThisWeek.toFixed(1)}
+              {weekOffset === 0 && (
+                <span className="text-sm font-normal text-vault-text-muted">/{weeklyTarget}h</span>
+              )}
+            </p>
+            <p className="text-[10px] text-vault-text-muted text-center mb-2">Hours Logged</p>
+            {weekOffset === 0 && (
+              <div className="w-full h-1.5 rounded-full bg-vault-border overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${Math.min(hoursLoggedPct, 100)}%`,
+                    backgroundColor: remaining < 0 ? "var(--vault-critical)" : "var(--vault-accent)",
+                  }}
+                />
+              </div>
+            )}
           </div>
           <div className="card-base p-4 text-center">
             <ListChecks className="w-5 h-5 mx-auto mb-1" style={{ color: sc.todo }} />

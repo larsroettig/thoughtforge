@@ -11,6 +11,20 @@ export default defineConfig(async () => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    minify: "terser",
+    terserOptions: { compress: { drop_console: true, drop_debugger: true } },
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "vendor-react":   ["react", "react-dom"],
+          "vendor-tauri":   ["@tauri-apps/api", "@tauri-apps/plugin-dialog", "@tauri-apps/plugin-fs", "@tauri-apps/plugin-shell", "@tauri-apps/plugin-notification"],
+          "vendor-ui":      ["lucide-react", "zustand"],
+          "vendor-content": ["marked", "dompurify", "date-fns"],
+        },
+      },
+    },
+  },
   clearScreen: false,
   server: {
     port: 1420,

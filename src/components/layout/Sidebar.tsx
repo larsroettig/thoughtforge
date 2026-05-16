@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   LayoutDashboard,
   Gauge,
@@ -15,7 +15,25 @@ import {
   Pencil,
   Trash2,
   BarChart3,
+  Grid2x2,
+  Target,
+  GripVertical,
 } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import type { DragEndEvent } from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { CreateSpaceModal as CreateSpaceModalInline } from "@/components/spaces/CreateSpaceModal";
 import { NotificationCenter } from "@/components/notifications/NotificationCenter";
 import { useAppStore } from "@/stores/appStore";
@@ -26,12 +44,42 @@ import { PROJECT_COLORS } from "@/types";
 const NAV_ITEMS: { id: AppView; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "dashboard", label: "Dashboard", icon: Gauge },
   { id: "board", label: "Board", icon: LayoutDashboard },
+  { id: "matrix", label: "Matrix", icon: Grid2x2 },
+  { id: "goals", label: "Goals", icon: Target },
   { id: "stats", label: "Weekly Review", icon: BarChart3 },
   { id: "chat", label: "Chat", icon: MessageSquare },
   { id: "documents", label: "Documents", icon: FileText },
   { id: "archive", label: "Archive", icon: Archive },
   { id: "settings", label: "Settings", icon: Settings },
 ];
+
+// ── Sortable wrapper ──────────────────────────────────────────────────
+function SortableSpaceItem({
+  id,
+  ...props
+}: {
+  id: string;
+  space: { id: string; name: string; color: string };
+  isActive: boolean;
+  taskCount: number;
+  onOpen: () => void;
+}) {
+  const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+      }}
+      {...listeners}
+      className="touch-none"
+    >
+      <SpaceItem {...props} />
+    </div>
+  );
+}
 
 // ── Space Item with right-click context menu ──────────────────────────
 function SpaceItem({
@@ -51,18 +99,20 @@ function SpaceItem({
   const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
   const [renaming, setRenaming] = useState(false);
   const [newName, setNewName] = useState(space.name);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const menuRef = useState<HTMLDivElement | null>(null);
+  const menuRefEl = menuRef[0];
+  const setMenuRefEl = menuRef[1];
 
   useEffect(() => {
     if (!showMenu) return;
     const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      if (menuRefEl && !menuRefEl.contains(e.target as Node)) {
         setShowMenu(false);
       }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [showMenu]);
+  }, [showMenu, menuRefEl]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -120,12 +170,13 @@ function SpaceItem({
       <button
         onClick={onOpen}
         onContextMenu={handleContextMenu}
-        className={`flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs transition-colors ${
+        className={`group flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs transition-colors ${
           isActive
             ? "bg-vault-card text-vault-text-bright"
             : "text-vault-text-muted hover:bg-vault-card hover:text-vault-text"
         }`}
       >
+        <GripVertical className="w-3 h-3 flex-shrink-0 opacity-0 group-hover:opacity-30 cursor-grab transition-opacity" />
         <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: space.color }} />
         <span className="flex-1 text-left truncate" title={space.name}>{space.name}</span>
         {taskCount > 0 && <span className="text-[10px] text-vault-text-muted">{taskCount}</span>}
@@ -133,7 +184,7 @@ function SpaceItem({
 
       {showMenu && (
         <div
-          ref={menuRef}
+          ref={setMenuRefEl}
           className="fixed z-[100] bg-vault-surface border border-vault-border rounded-xl shadow-2xl py-1.5 w-44"
           style={{
             left: Math.min(menuPos.x, window.innerWidth - 190),
@@ -182,14 +233,62 @@ export function Sidebar() {
     projectSpaces,
     activeSpaceId,
     setActiveSpaceId,
+    config,
   } = useAppStore();
   const { saveTask } = useVault();
   const [showCreateSpace, setShowCreateSpace] = useState(false);
-
   const [projectsOpen, setProjectsOpen] = useState(true);
+
+  const SPACE_ORDER_KEY = "vaultmind-space-order";
+  const [spaceOrder, setSpaceOrder] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem(SPACE_ORDER_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const spaceSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  );
+
+  const orderedSpaces = useMemo(() => {
+    const active = projectSpaces.filter((s) => !s.archived);
+    const alphaSorted = [...active].sort((a, b) => {
+      if (a.id === "general") return -1;
+      if (b.id === "general") return 1;
+      return a.name.localeCompare(b.name);
+    });
+    if (spaceOrder.length === 0) return alphaSorted;
+    const ordered = spaceOrder
+      .map((id) => active.find((s) => s.id === id))
+      .filter(Boolean) as typeof active;
+    const unsorted = active
+      .filter((s) => !spaceOrder.includes(s.id))
+      .sort((a, b) => {
+        if (a.id === "general") return -1;
+        if (b.id === "general") return 1;
+        return a.name.localeCompare(b.name);
+      });
+    return [...ordered, ...unsorted];
+  }, [projectSpaces, spaceOrder]);
+
+  const handleSpaceDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+      const oldIndex = orderedSpaces.findIndex((s) => s.id === active.id);
+      const newIndex = orderedSpaces.findIndex((s) => s.id === over.id);
+      const next = arrayMove(orderedSpaces, oldIndex, newIndex).map((s) => s.id);
+      setSpaceOrder(next);
+      localStorage.setItem(SPACE_ORDER_KEY, JSON.stringify(next));
+    },
+    [orderedSpaces]
+  );
+
   const [elapsed, setElapsed] = useState(0);
 
-  // Timer tick
   useEffect(() => {
     if (!activeTimer) {
       setElapsed(0);
@@ -213,7 +312,6 @@ export function Sidebar() {
     done: activeTasks.filter((t) => t.status === "done").length,
   };
 
-  // Projects tree
   const projectTree = useMemo(() => {
     const map: Record<string, { count: number; doneCount: number }> = {};
     for (const t of activeTasks) {
@@ -288,27 +386,40 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="px-3 py-3 space-y-0.5">
-        {NAV_ITEMS.map((item) => {
-          const Icon = item.icon;
-          return (
-            <button
-              key={item.id}
-              onClick={() => {
-                setView(item.id);
-                if (item.id === "board") setProjectFilter(null);
-              }}
-              className={`sidebar-btn ${currentView === item.id ? "active" : ""}`}
-            >
-              <Icon className="w-4 h-4" />
-              <span className="flex-1 text-left">{item.label}</span>
-              {item.id === "archive" && archivedCount > 0 && (
-                <span className="text-[10px] bg-vault-card rounded-full px-1.5 py-0.5 text-vault-text-muted">
-                  {archivedCount}
-                </span>
-              )}
-            </button>
-          );
-        })}
+        {(() => {
+          const disabled = new Set(config.nav_disabled ?? []);
+          const order = config.nav_order ?? [];
+          const controllable = NAV_ITEMS.filter((i) => i.id !== "settings");
+          const settings = NAV_ITEMS.find((i) => i.id === "settings")!;
+          const sorted = order.length > 0
+            ? [
+                ...order.map((id) => controllable.find((i) => i.id === id)).filter(Boolean) as typeof controllable,
+                ...controllable.filter((i) => !order.includes(i.id)),
+              ]
+            : controllable;
+          const visible = sorted.filter((i) => !disabled.has(i.id));
+          return [...visible, settings].map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                onClick={() => {
+                  setView(item.id);
+                  if (item.id === "board") setProjectFilter(null);
+                }}
+                className={`sidebar-btn ${currentView === item.id ? "active" : ""}`}
+              >
+                <Icon className="w-4 h-4" />
+                <span className="flex-1 text-left">{item.label}</span>
+                {item.id === "archive" && archivedCount > 0 && (
+                  <span className="text-[10px] bg-vault-card rounded-full px-1.5 py-0.5 text-vault-text-muted">
+                    {archivedCount}
+                  </span>
+                )}
+              </button>
+            );
+          });
+        })()}
       </nav>
 
       {/* Project Spaces */}
@@ -332,16 +443,28 @@ export function Sidebar() {
 
         {projectsOpen && (
           <div className="space-y-0.5 pb-2">
-            {/* Project Spaces (clickable, right-click for context menu) */}
-            {projectSpaces.filter((s) => !s.archived).map((space) => (
-              <SpaceItem
-                key={space.id}
-                space={space}
-                isActive={currentView === "project-space" && activeSpaceId === space.id}
-                taskCount={activeTasks.filter((t) => t.project === space.id && t.status !== "done").length}
-                onOpen={() => { setActiveSpaceId(space.id); setView("project-space"); }}
-              />
-            ))}
+            {/* Project Spaces — sortable via dnd-kit */}
+            <DndContext
+              sensors={spaceSensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleSpaceDragEnd}
+            >
+              <SortableContext
+                items={orderedSpaces.map((s) => s.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                {orderedSpaces.map((space) => (
+                  <SortableSpaceItem
+                    key={space.id}
+                    id={space.id}
+                    space={space}
+                    isActive={currentView === "project-space" && activeSpaceId === space.id}
+                    taskCount={activeTasks.filter((t) => t.project === space.id && t.status !== "done").length}
+                    onOpen={() => { setActiveSpaceId(space.id); setView("project-space"); }}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
 
             {/* Task-derived projects (no space yet) */}
             {projectTree

@@ -2,6 +2,25 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
+/// Reject IDs that would allow path traversal when used as directory/file name components.
+/// Allows only alphanumeric characters, hyphens, underscores, and interior dots.
+fn validate_id_component(id: &str) -> Result<(), String> {
+    if id.is_empty() {
+        return Err("ID cannot be empty".to_string());
+    }
+    // Reject absolute paths, parent-directory traversal, and shell-special characters.
+    if id.starts_with('/') || id.starts_with('.') || id.contains("..") || id.contains('\\') {
+        return Err(format!("Invalid ID '{}': path traversal not allowed", id));
+    }
+    if !id.chars().all(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | '.')) {
+        return Err(format!(
+            "Invalid ID '{}': only alphanumeric characters, hyphens, underscores, and dots are allowed",
+            id
+        ));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SystemInfo {
     /// Total physical RAM in gigabytes (rounded down).
@@ -61,6 +80,12 @@ fn vault_path_override_file() -> PathBuf {
 }
 
 pub fn vault_dir() -> PathBuf {
+    // Allow MCP binary (and tests) to override via env var without touching the filesystem.
+    if let Ok(p) = std::env::var("VAULTMIND_PATH") {
+        if !p.is_empty() {
+            return PathBuf::from(p);
+        }
+    }
     if let Ok(content) = fs::read_to_string(vault_path_override_file()) {
         let p = content.trim().to_string();
         if !p.is_empty() {
@@ -80,10 +105,17 @@ pub fn change_vault_path(new_path: String) -> Result<String, String> {
     } else {
         let p = std::path::Path::new(&new_path);
         // Reject paths that traverse into known sensitive system directories.
-        let forbidden_prefixes = ["/etc", "/usr", "/bin", "/sbin", "/sys", "/proc", "/boot"];
+        // On macOS, /etc → /private/etc so we check both the canonical and
+        // the /private/* equivalents.
+        let forbidden_prefixes = [
+            "/etc", "/usr", "/bin", "/sbin", "/sys", "/proc", "/boot",
+            // macOS-specific
+            "/private/etc", "/private/var", "/private/tmp",
+            "/System", "/Library", "/Applications", "/Volumes",
+        ];
         let canonical = p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
         for prefix in &forbidden_prefixes {
-            if canonical.starts_with(prefix) {
+            if canonical.starts_with(prefix) || p.starts_with(prefix) {
                 return Err(format!("Vault path '{}' is not allowed", new_path));
             }
         }
@@ -112,6 +144,7 @@ pub fn vault_config() -> VaultConfig {
 
 /// Read notes for a space — shared logic for both the Tauri command and search indexer.
 pub fn read_space_notes_internal(space_id: &str) -> Result<Vec<NoteData>, String> {
+    validate_id_component(space_id)?;
     let notes_dir = space_dir(space_id).join("notes");
     if !notes_dir.exists() {
         return Ok(vec![]);
@@ -219,6 +252,25 @@ pub struct VaultConfig {
     pub embedding_model: String,
     #[serde(default = "default_true")]
     pub notifications_enabled: bool,
+    #[serde(default)]
+    pub mcp_enabled: bool,
+    #[serde(default)]
+    pub mcp_token: String,
+    /// When false (default) the HTTP sidecar is not started; stdio transport still works.
+    #[serde(default)]
+    pub mcp_http_enabled: bool,
+    #[serde(default = "default_weekly_hours")]
+    pub weekly_hours_target: u32,
+    /// User-defined nav item order (list of AppView ids). Empty = default order.
+    #[serde(default)]
+    pub nav_order: Vec<String>,
+    /// Nav items that are hidden from the sidebar. "settings" can never be hidden.
+    #[serde(default)]
+    pub nav_disabled: Vec<String>,
+}
+
+fn default_weekly_hours() -> u32 {
+    38
 }
 
 fn default_embedding_model() -> String {
@@ -243,23 +295,32 @@ impl Default for VaultConfig {
             status_colors: StatusColors::default(),
             embedding_model: default_embedding_model(),
             notifications_enabled: true,
+            mcp_enabled: false,
+            mcp_token: String::new(),
+            mcp_http_enabled: false,
+            weekly_hours_target: 38,
+            nav_order: vec![],
+            nav_disabled: vec![],
         }
     }
 }
 
 #[tauri::command]
-pub fn init_vault() -> Result<String, String> {
+pub async fn init_vault() -> Result<String, String> {
     let base = vault_dir();
     let dirs = [
         "boards",
         "uploads/transcripts",
         "uploads/documents",
         "spaces",
+        "skills",
     ];
 
     for dir in &dirs {
         let path = base.join(dir);
-        fs::create_dir_all(&path).map_err(|e| format!("Failed to create {}: {}", dir, e))?;
+        tokio::fs::create_dir_all(&path)
+            .await
+            .map_err(|e| format!("Failed to create {}: {}", dir, e))?;
     }
 
     let config_path = base.join("config.yaml");
@@ -267,8 +328,20 @@ pub fn init_vault() -> Result<String, String> {
         let config = VaultConfig::default();
         let yaml = serde_json::to_string_pretty(&config)
             .map_err(|e| format!("Failed to serialize config: {}", e))?;
-        fs::write(&config_path, yaml)
+        tokio::fs::write(&config_path, yaml)
+            .await
             .map_err(|e| format!("Failed to write config: {}", e))?;
+    }
+
+    // Ensure an MCP token exists (generated once, never changes unless deleted).
+    {
+        let mut config = vault_config();
+        if config.mcp_token.is_empty() {
+            config.mcp_token = uuid::Uuid::new_v4().to_string();
+            if let Ok(json) = serde_json::to_string_pretty(&config) {
+                let _ = tokio::fs::write(&config_path, json).await;
+            }
+        }
     }
 
     let board_path = base.join("boards").join("kanban.md");
@@ -291,7 +364,8 @@ filters: []
 
 # Main Kanban Board
 "#;
-        fs::write(&board_path, default_board)
+        tokio::fs::write(&board_path, default_board)
+            .await
             .map_err(|e| format!("Failed to write board: {}", e))?;
     }
 
@@ -431,7 +505,12 @@ fn parse_task_markdown(content: &str) -> Option<TaskData> {
 }
 
 #[tauri::command]
-pub fn write_task(task: TaskData) -> Result<(), String> {
+pub async fn write_task(task: TaskData) -> Result<(), String> {
+    validate_id_component(&task.id)?;
+    if !task.project.is_empty() {
+        validate_id_component(&task.project)?;
+    }
+
     // Resolve target directory:
     //   - task has a project → spaces/{project}/tasks/  (create if needed)
     //   - no project         → spaces/general/tasks/    (create if needed)
@@ -441,7 +520,8 @@ pub fn write_task(task: TaskData) -> Result<(), String> {
         space_dir("general").join("tasks")
     };
 
-    fs::create_dir_all(&target_dir)
+    tokio::fs::create_dir_all(&target_dir)
+        .await
         .map_err(|e| format!("Failed to create tasks dir: {}", e))?;
 
     let path = target_dir.join(format!("{}.md", task.id));
@@ -511,22 +591,57 @@ subtasks:
         task.notes
     );
 
-    fs::write(&path, content)
+    tokio::fs::write(&path, content)
+        .await
         .map_err(|e| format!("Failed to write task: {}", e))?;
 
     Ok(())
 }
 
 #[tauri::command]
-pub fn delete_task(id: String) -> Result<(), String> {
-    if let Some(path) = find_task_path(&id) {
-        fs::remove_file(&path)
-            .map_err(|e| format!("Failed to delete task: {}", e))?;
-    }
-    Ok(())
+pub async fn delete_task(id: String, space_id: Option<String>) -> Result<(), String> {
+    validate_id_component(&id)?;
+
+    // Fast path: if space_id is provided, build the path directly without scanning.
+    let path = if let Some(sid) = space_id {
+        validate_id_component(&sid)?;
+        let candidate = space_dir(&sid).join("tasks").join(format!("{}.md", id));
+        if candidate.exists() {
+            candidate
+        } else {
+            // Fallback scan for tasks created before this optimization.
+            match find_task_path(&id) {
+                Some(p) => p,
+                None => return Ok(()),
+            }
+        }
+    } else {
+        match find_task_path(&id) {
+            Some(p) => p,
+            None => return Ok(()),
+        }
+    };
+
+    tokio::fs::remove_file(&path)
+        .await
+        .map_err(|e| format!("Failed to delete task: {}", e))
 }
 
 // ── Config ───────────────────────────────────────────────────────────────
+
+/// Generate a fresh MCP bearer token, persist it to config, and return the new token.
+#[tauri::command]
+pub fn regenerate_mcp_token() -> Result<String, String> {
+    let config_path = vault_dir().join("config.yaml");
+    let mut config = vault_config();
+    let new_token = uuid::Uuid::new_v4().to_string();
+    config.mcp_token = new_token.clone();
+    let content = serde_json::to_string_pretty(&config)
+        .map_err(|e| format!("Failed to serialize config: {}", e))?;
+    fs::write(&config_path, content)
+        .map_err(|e| format!("Failed to write config: {}", e))?;
+    Ok(new_token)
+}
 
 #[tauri::command]
 pub fn read_config() -> Result<VaultConfig, String> {
@@ -543,12 +658,13 @@ pub fn read_config() -> Result<VaultConfig, String> {
 }
 
 #[tauri::command]
-pub fn write_config(config: VaultConfig) -> Result<(), String> {
+pub async fn write_config(config: VaultConfig) -> Result<(), String> {
     let config_path = vault_dir().join("config.yaml");
     let content = serde_json::to_string_pretty(&config)
         .map_err(|e| format!("Failed to serialize config: {}", e))?;
 
-    fs::write(&config_path, content)
+    tokio::fs::write(&config_path, content)
+        .await
         .map_err(|e| format!("Failed to write config: {}", e))?;
 
     Ok(())
@@ -604,11 +720,13 @@ pub fn read_file_content(path: String) -> Result<String, String> {
 
 // ── Project Spaces ───────────────────────────────────────────────────────
 
-fn ensure_space_dirs(id: &str) -> Result<(), String> {
+async fn ensure_space_dirs(id: &str) -> Result<(), String> {
     let dir = space_dir(id);
-    fs::create_dir_all(dir.join("notes"))
+    tokio::fs::create_dir_all(dir.join("notes"))
+        .await
         .map_err(|e| format!("Failed to create notes dir: {}", e))?;
-    fs::create_dir_all(dir.join("tasks"))
+    tokio::fs::create_dir_all(dir.join("tasks"))
+        .await
         .map_err(|e| format!("Failed to create tasks dir: {}", e))?;
     Ok(())
 }
@@ -645,12 +763,13 @@ pub fn read_spaces() -> Result<Vec<serde_json::Value>, String> {
 }
 
 #[tauri::command]
-pub fn write_space(space: serde_json::Value) -> Result<(), String> {
+pub async fn write_space(space: serde_json::Value) -> Result<(), String> {
     let id = space.get("id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Space must have an id".to_string())?;
+    validate_id_component(id)?;
 
-    ensure_space_dirs(id)?;
+    ensure_space_dirs(id).await?;
 
     // Strip notes array — notes live as individual files
     let mut meta = space.clone();
@@ -661,7 +780,8 @@ pub fn write_space(space: serde_json::Value) -> Result<(), String> {
     let content = serde_json::to_string_pretty(&meta)
         .map_err(|e| format!("Failed to serialize space: {}", e))?;
 
-    fs::write(space_dir(id).join("space.json"), content)
+    tokio::fs::write(space_dir(id).join("space.json"), content)
+        .await
         .map_err(|e| format!("Failed to write space: {}", e))?;
 
     Ok(())
@@ -669,6 +789,7 @@ pub fn write_space(space: serde_json::Value) -> Result<(), String> {
 
 #[tauri::command]
 pub fn delete_space(id: String) -> Result<(), String> {
+    validate_id_component(&id)?;
     let dir = space_dir(&id);
     if dir.exists() {
         fs::remove_dir_all(&dir)
@@ -743,25 +864,129 @@ pub fn read_space_notes(space_id: String) -> Result<Vec<NoteData>, String> {
 }
 
 #[tauri::command]
-pub fn write_space_note(space_id: String, note: NoteData) -> Result<(), String> {
+pub async fn write_space_note(space_id: String, note: NoteData) -> Result<(), String> {
+    validate_id_component(&space_id)?;
+    validate_id_component(&note.id)?;
     let notes_dir = space_dir(&space_id).join("notes");
-    fs::create_dir_all(&notes_dir)
+    tokio::fs::create_dir_all(&notes_dir)
+        .await
         .map_err(|e| format!("Failed to create notes dir: {}", e))?;
 
     let path = notes_dir.join(format!("{}.md", note.id));
     let content = note_to_markdown(&note);
-    fs::write(&path, content)
+    tokio::fs::write(&path, content)
+        .await
         .map_err(|e| format!("Failed to write note: {}", e))?;
 
     Ok(())
 }
 
 #[tauri::command]
-pub fn delete_space_note(space_id: String, note_id: String) -> Result<(), String> {
+pub async fn delete_space_note(space_id: String, note_id: String) -> Result<(), String> {
+    validate_id_component(&space_id)?;
+    validate_id_component(&note_id)?;
     let path = space_dir(&space_id).join("notes").join(format!("{}.md", note_id));
     if path.exists() {
-        fs::remove_file(&path)
+        tokio::fs::remove_file(&path)
+            .await
             .map_err(|e| format!("Failed to delete note: {}", e))?;
+    }
+    Ok(())
+}
+
+// ── Skills ────────────────────────────────────────────────────────────────
+
+pub fn skills_dir() -> PathBuf {
+    vault_dir().join("skills")
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SkillData {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub content: String,
+    pub source_url: String,
+    pub created: String,
+}
+
+/// Read all `.md` files from the skills folder. Non-fatal on individual parse errors.
+pub fn read_skills() -> Result<Vec<SkillData>, String> {
+    let dir = skills_dir();
+    if !dir.exists() {
+        return Ok(vec![]);
+    }
+    let mut skills = Vec::new();
+    let entries = fs::read_dir(&dir).map_err(|e| format!("Cannot read skills dir: {}", e))?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("md") {
+            continue;
+        }
+        let raw = fs::read_to_string(&path).unwrap_or_default();
+        if let Some(skill) = parse_skill_md(&raw) {
+            skills.push(skill);
+        }
+    }
+    skills.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(skills)
+}
+
+fn parse_skill_md(raw: &str) -> Option<SkillData> {
+    let inner = raw.strip_prefix("---\n")?;
+    let (fm, body) = inner.split_once("\n---")?;
+    let content = body.trim_start_matches('\n').to_string();
+    let get = |key: &str| -> String {
+        fm.lines()
+            .find(|l| l.starts_with(&format!("{}:", key)))
+            .and_then(|l| l.splitn(2, ':').nth(1))
+            .map(|v| v.trim().trim_matches('"').to_string())
+            .unwrap_or_default()
+    };
+    Some(SkillData {
+        id: get("id"),
+        name: get("name"),
+        description: get("description"),
+        content,
+        source_url: get("source_url"),
+        created: get("created"),
+    })
+}
+
+fn skill_to_md(skill: &SkillData) -> String {
+    format!(
+        "---\nid: {}\nname: {}\ndescription: {}\nsource_url: {}\ncreated: {}\n---\n\n{}",
+        skill.id, skill.name, skill.description, skill.source_url, skill.created, skill.content
+    )
+}
+
+#[tauri::command]
+pub fn list_skills() -> Result<Vec<SkillData>, String> {
+    read_skills()
+}
+
+#[tauri::command]
+pub async fn write_skill(skill: SkillData) -> Result<(), String> {
+    validate_id_component(&skill.id)?;
+    let dir = skills_dir();
+    tokio::fs::create_dir_all(&dir)
+        .await
+        .map_err(|e| format!("Cannot create skills dir: {}", e))?;
+    let path = dir.join(format!("{}.md", skill.id));
+    let content = skill_to_md(&skill);
+    tokio::fs::write(&path, content)
+        .await
+        .map_err(|e| format!("Failed to write skill: {}", e))
+}
+
+#[tauri::command]
+pub async fn delete_skill(id: String) -> Result<(), String> {
+    validate_id_component(&id)?;
+    let path = skills_dir().join(format!("{}.md", id));
+    if path.exists() {
+        tokio::fs::remove_file(&path)
+            .await
+            .map_err(|e| format!("Failed to delete skill: {}", e))?;
     }
     Ok(())
 }

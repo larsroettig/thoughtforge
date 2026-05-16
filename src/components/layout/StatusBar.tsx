@@ -39,6 +39,12 @@ export function StatusBar() {
             <span>Processing...</span>
           </div>
         )}
+
+        {config.mcp_enabled && (
+          <span>
+            MCP <span className="text-vault-success">:7532</span>
+          </span>
+        )}
       </div>
 
       <div className="flex items-center gap-4">

@@ -120,6 +120,31 @@ The chat connects to your local LLM and can **propose task modifications**:
 | `/summarize` | Summarize a project |
 | `/prioritize` | Suggest priority ordering |
 
+## MCP Server (Claude Desktop Integration)
+
+ThoughtForge ships a built-in [Model Context Protocol](https://modelcontextprotocol.io) server. Enable it in **Settings → MCP & Integrations**, then add the server to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "thoughtforge": {
+      "command": "/Applications/ThoughtForge.app/Contents/MacOS/vaultmind-mcp",
+      "args": ["--stdio"]
+    }
+  }
+}
+```
+
+Available tools: `list_tasks`, `create_task`, `update_task`, `delete_task`, `list_spaces`, `list_notes`, `create_note`, `search_notes`, `list_goals`, `create_goal`, `update_goal`, `delete_goal`.
+
+See **[docs/mcp.md](docs/mcp.md)** for the full tool reference and HTTP transport setup.
+
+## Documentation
+
+- **[User Guide](docs/user-guide.md)** — getting started, all features explained
+- **[MCP Server](docs/mcp.md)** — Claude Desktop integration, tool reference, security
+- **[GitHub Pages](https://larsroettig.github.io/thoughtforge/)** — landing page
+
 ## Testing
 
 ```bash

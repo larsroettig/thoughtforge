@@ -1,4 +1,6 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
+import { useDraggable } from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
 import {
   Clock,
   User,
@@ -21,12 +23,14 @@ import type { Task, TaskStatus, StatusColors } from "@/types";
 import { PROJECT_COLORS, STATUS_LABELS, DEFAULT_STATUS_COLORS } from "@/types";
 import { formatHours } from "@/lib/time";
 import { useAppStore } from "@/stores/appStore";
+import { useShallow } from "zustand/react/shallow";
 import { useVault } from "@/hooks/useVault";
 import { OwnerSelect } from "./OwnerSelect";
 
 interface TaskCardProps {
   task: Task;
-  onClick: () => void;
+  onClick: (task: Task) => void;
+  draggable?: boolean;
 }
 
 const STATUS_ICONS: Record<TaskStatus, typeof Circle> = {
@@ -37,13 +41,15 @@ const STATUS_ICONS: Record<TaskStatus, typeof Circle> = {
   blocked: Ban,
 };
 
-export function TaskCard({ task, onClick }: TaskCardProps) {
+export const TaskCard = memo(function TaskCard({ task, onClick, draggable: isDraggable = false }: TaskCardProps) {
   const [showMenu, setShowMenu] = useState(false);
   const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showAssign, setShowAssign] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const { activeTimer, startTimer, stopTimer, updateTask } = useAppStore();
+  const { activeTimer, startTimer, stopTimer, updateTask } = useAppStore(
+    useShallow((s) => ({ activeTimer: s.activeTimer, startTimer: s.startTimer, stopTimer: s.stopTimer, updateTask: s.updateTask }))
+  );
   const { saveTask, deleteTask } = useVault();
 
   const isTimerRunning = activeTimer?.taskId === task.id;
@@ -124,18 +130,10 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
     [task, updateTask, saveTask, deleteTask, startTimer, stopTimer]
   );
 
-  const handleDragStart = useCallback(
-    (e: React.DragEvent) => {
-      e.dataTransfer.setData("text/plain", task.id);
-      e.dataTransfer.effectAllowed = "move";
-      (e.target as HTMLElement).style.opacity = "0.4";
-    },
-    [task.id]
-  );
-
-  const handleDragEnd = useCallback((e: React.DragEvent) => {
-    (e.target as HTMLElement).style.opacity = "1";
-  }, []);
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: task.id,
+    disabled: !isDraggable,
+  });
 
   const projectColor = PROJECT_COLORS[task.project] || PROJECT_COLORS.default;
   const sc: StatusColors = { ...DEFAULT_STATUS_COLORS, ...(useAppStore.getState().config.status_colors || {}) };
@@ -144,15 +142,20 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
   return (
     <>
       <div
-        draggable
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-        onClick={onClick}
+        ref={isDraggable ? setNodeRef : undefined}
+        style={{
+          borderLeftWidth: "3px",
+          borderLeftColor: statusColor,
+          ...(isDraggable ? { transform: CSS.Translate.toString(transform), opacity: isDragging ? 0.4 : undefined } : {}),
+        }}
+        {...(isDraggable ? { ...attributes, ...listeners } : {})}
+        onClick={() => onClick(task)}
         onContextMenu={handleContextMenu}
-        className={`card-base cursor-grab active:cursor-grabbing group relative ${
-          isTimerRunning ? "ring-1 ring-vault-success/50 border-vault-success/30" : ""
-        } ${task.status === "done" ? "opacity-60" : ""}`}
-        style={{ borderLeftWidth: "3px", borderLeftColor: statusColor }}
+        className={`card-base group relative ${
+          isDraggable ? "cursor-grab active:cursor-grabbing touch-none" : "cursor-pointer"
+        } ${isTimerRunning ? "ring-1 ring-vault-success/50 border-vault-success/30" : ""} ${
+          task.status === "done" ? "opacity-60" : ""
+        }`}
       >
         {/* Timer indicator */}
         {isTimerRunning && (
@@ -474,4 +477,4 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
       )}
     </>
   );
-}
+});

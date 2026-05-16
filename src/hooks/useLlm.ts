@@ -260,7 +260,7 @@ export function useLlm() {
       onChunk: (text: string) => void,
       onDone: () => void
     ): Promise<void> => {
-      const streamId = `${Date.now()}`;
+      const streamId = crypto.randomUUID();
 
       const unlisten1 = await listen<string>(
         `stream-chunk-${streamId}`,
@@ -269,20 +269,29 @@ export function useLlm() {
         }
       );
 
-      const unlisten2 = await listen(`stream-done-${streamId}`, () => {
-        onDone();
+      const cleanup = () => {
         unlisten1();
         unlisten2();
+      };
+
+      const unlisten2 = await listen(`stream-done-${streamId}`, () => {
+        onDone();
+        cleanup();
       });
 
-      await invoke("stream_chat", {
-        baseUrl: config.lm_studio_url,
-        model: config.active_model,
-        messages,
-        temperature: 0.7,
-        maxTokens: 4096,
-        streamId,
-      });
+      try {
+        await invoke("stream_chat", {
+          baseUrl: config.lm_studio_url,
+          model: config.active_model,
+          messages,
+          temperature: 0.7,
+          maxTokens: 4096,
+          streamId,
+        });
+      } catch (err) {
+        cleanup();
+        throw err;
+      }
     },
     [config.lm_studio_url, config.active_model]
   );

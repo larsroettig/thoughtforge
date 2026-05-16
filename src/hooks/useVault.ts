@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "@/stores/appStore";
-import type { Task, VaultConfig, ProjectSpace, SpaceNote, NoteSearchResult } from "@/types";
+import type { Task, VaultConfig, ProjectSpace, SpaceNote, NoteSearchResult, SmartGoal } from "@/types";
 
 export function useVault() {
   const {
@@ -196,6 +196,29 @@ export function useVault() {
     }
   }, [removeSpaceNote]);
 
+  // ── SMART Goals ─────────────────────────────────────────────────────
+
+  const saveGoal = useCallback(async (goal: SmartGoal) => {
+    const spaces = useAppStore.getState().projectSpaces;
+    const space = spaces.find((s) => s.id === goal.space) ?? spaces.find((s) => s.id === "general");
+    if (!space) return;
+    const goals = [...(space.goals ?? [])];
+    const idx = goals.findIndex((g) => g.id === goal.id);
+    if (idx >= 0) goals[idx] = goal; else goals.push(goal);
+    const updated = { ...space, goals };
+    setProjectSpaces(spaces.map((s) => (s.id === updated.id ? updated : s)));
+    await invoke("write_space", { space: updated });
+  }, [setProjectSpaces]);
+
+  const deleteGoal = useCallback(async (goalId: string, spaceId: string) => {
+    const spaces = useAppStore.getState().projectSpaces;
+    const space = spaces.find((s) => s.id === spaceId);
+    if (!space) return;
+    const updated = { ...space, goals: (space.goals ?? []).filter((g) => g.id !== goalId) };
+    setProjectSpaces(spaces.map((s) => (s.id === updated.id ? updated : s)));
+    await invoke("write_space", { space: updated });
+  }, [setProjectSpaces]);
+
   const changeVaultPath = useCallback(async (newPath: string) => {
     const resolved = await invoke<string>("change_vault_path", { newPath });
     await invoke("init_vault");
@@ -227,5 +250,7 @@ export function useVault() {
     indexSpaceNotes,
     searchSpaceNotes,
     spaceIndexStatus,
+    saveGoal,
+    deleteGoal,
   };
 }

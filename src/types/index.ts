@@ -67,6 +67,12 @@ export interface VaultConfig {
   country: string;
   status_colors: StatusColors;
   notifications_enabled?: boolean;
+  mcp_enabled?: boolean;
+  mcp_token?: string;
+  mcp_http_enabled?: boolean;
+  weekly_hours_target?: number;
+  nav_order?: string[];
+  nav_disabled?: string[];
 }
 
 export interface LlmModel {
@@ -113,6 +119,21 @@ export interface TimeEntry {
   description: string;
 }
 
+export interface SmartGoal {
+  id: string;
+  title: string;
+  metric: string;
+  target: string;
+  current: string;
+  difficulty: "easy" | "moderate" | "stretch";
+  space: string;
+  due: string;
+  status: "active" | "completed" | "abandoned";
+  linked_tasks: string[];
+  notes: string;
+  created: string;
+}
+
 export interface ProjectSpace {
   id: string;
   name: string;
@@ -122,6 +143,7 @@ export interface ProjectSpace {
   archived: boolean;
   documents: SpaceDocument[];
   timeEntries: TimeEntry[];
+  goals?: SmartGoal[];
 }
 
 export interface SpaceDocument {
@@ -150,7 +172,7 @@ export interface NoteSearchResult {
   score: number;
 }
 
-export type AppView = "dashboard" | "board" | "chat" | "documents" | "settings" | "archive" | "project-space" | "stats";
+export type AppView = "dashboard" | "board" | "matrix" | "goals" | "chat" | "documents" | "settings" | "archive" | "project-space" | "stats";
 
 export type ProjectSpaceTab = "overview" | "documents" | "notes" | "meetings" | "tasks" | "knowledge";
 
