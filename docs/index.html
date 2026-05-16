@@ -5,196 +5,300 @@ description: Manage tasks, write notes, and chat with a local LLM — all on you
 ---
 
 <!-- Hero -->
-<section class="max-w-3xl mx-auto px-6 pt-20 pb-16 text-center">
-  <div class="inline-block bg-accent/10 border border-accent/30 text-accent-lite text-xs font-semibold uppercase tracking-widest px-4 py-1.5 rounded-full mb-6">
-    100% Local · No Cloud · No Tracking
+<section class="px-6 pt-28 pb-20 text-center">
+  <div class="inline-flex items-center gap-2 bg-white/[0.05] border border-white/[0.08] text-accent-lite text-[0.7rem] font-semibold tracking-[0.12em] uppercase px-4 py-1.5 rounded-full mb-8">
+    <span class="w-1.5 h-1.5 rounded-full bg-ok flex-shrink-0"></span>
+    100% Local &nbsp;·&nbsp; No Cloud &nbsp;·&nbsp; No Tracking
   </div>
-  <h1 class="text-4xl sm:text-5xl font-extrabold leading-tight tracking-tight text-prose mb-5">
-    Your AI planning assistant,<br />
-    <span class="text-accent-lite">running entirely on your Mac</span>
+
+  <h1 class="text-5xl sm:text-6xl lg:text-[4.5rem] font-bold leading-[1.06] tracking-tight text-prose mb-5 max-w-4xl mx-auto">
+    AI-powered planning.<br />
+    <span class="bg-gradient-to-r from-accent-lite to-accent bg-clip-text text-transparent">Entirely on your Mac.</span>
   </h1>
-  <p class="text-lg text-muted max-w-xl mx-auto mb-10">
-    Manage tasks, write notes, extract action items from meetings, and chat with a local LLM — all stored locally, nothing sent to the internet.
+
+  <p class="text-lg sm:text-xl text-muted max-w-xl mx-auto mb-10 leading-relaxed">
+    Tasks, notes, and AI conversations — stored locally as plain files. Nothing ever leaves your machine.
   </p>
+
   <div class="flex gap-3 justify-center flex-wrap">
     <a href="https://github.com/larsroettig/thoughtforge/releases/latest"
-       class="inline-flex items-center gap-2 bg-accent text-white font-semibold px-6 py-3 rounded-lg text-sm hover:opacity-90 transition-opacity">
-      ⬇ Download for macOS
+       class="inline-flex items-center gap-2 bg-accent text-white font-semibold px-7 py-3.5 rounded-full text-sm hover:bg-accent/90 transition-colors">
+      <svg viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4 flex-shrink-0">
+        <path d="M10.75 2.75a.75.75 0 0 0-1.5 0v8.614L6.295 8.235a.75.75 0 1 0-1.09 1.03l4.25 4.5a.75.75 0 0 0 1.09 0l4.25-4.5a.75.75 0 0 0-1.09-1.03l-2.955 3.129V2.75Z" />
+        <path d="M3.5 12.75a.75.75 0 0 0-1.5 0v2.5A2.75 2.75 0 0 0 4.75 18h10.5A2.75 2.75 0 0 0 18 15.25v-2.5a.75.75 0 0 0-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5Z" />
+      </svg>
+      Download for macOS
     </a>
     <a href="https://github.com/larsroettig/thoughtforge"
-       class="inline-flex items-center gap-2 bg-surface border border-edge text-prose font-semibold px-6 py-3 rounded-lg text-sm hover:border-muted transition-colors">
+       class="inline-flex items-center gap-2 bg-white/[0.05] border border-white/[0.1] text-prose font-semibold px-7 py-3.5 rounded-full text-sm hover:bg-white/[0.09] transition-colors">
       View on GitHub
     </a>
   </div>
 </section>
 
-<!-- Hero screenshot -->
-<div class="max-w-5xl mx-auto px-6 mb-20">
+<!-- Hero Screenshot -->
+<div class="max-w-6xl mx-auto px-6 pb-28 relative">
+  <div class="absolute inset-x-24 top-4 h-20 bg-accent/25 blur-3xl rounded-full pointer-events-none"></div>
   <img src="{{ site.baseurl }}/screenshots/dark/dashboard.png"
        alt="ThoughtForge Dashboard"
-       class="w-full rounded-xl border border-edge shadow-[0_24px_64px_rgba(0,0,0,0.5)]" />
+       class="relative w-full rounded-2xl border border-white/[0.08] shadow-[0_40px_100px_-20px_rgba(0,0,0,0.9)]" />
 </div>
 
 <!-- Features -->
-<section class="max-w-5xl mx-auto px-6 pb-20">
-  <p class="text-xs font-bold uppercase tracking-[0.1em] text-accent-lite mb-3">Features</p>
-  <h2 class="text-3xl font-bold tracking-tight text-prose mb-12">Everything you need to plan,<br class="hidden sm:block" /> without leaving your machine</h2>
+<section class="max-w-5xl mx-auto px-6 pb-28">
+  <div class="text-center mb-14">
+    <p class="text-[0.7rem] font-semibold uppercase tracking-[0.15em] text-accent-lite mb-3">Features</p>
+    <h2 class="text-3xl sm:text-4xl font-bold tracking-tight text-prose">Everything you need to plan.<br class="hidden sm:block" /> Nothing in the cloud.</h2>
+  </div>
 
-  <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-    <div class="bg-surface border border-edge rounded-xl p-5">
-      <div class="text-2xl mb-3">📋</div>
-      <h3 class="text-sm font-semibold text-prose mb-1.5">Smart Task Dashboard</h3>
-      <p class="text-xs text-muted leading-relaxed">Filters for My Tasks, Overdue, Due Today, Blocked, and more — across all projects at once.</p>
+  <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+
+    <!-- Task Dashboard -->
+    <div class="p-6 rounded-2xl bg-white/[0.025] border border-white/[0.06] hover:bg-white/[0.04] transition-colors">
+      <div class="w-9 h-9 rounded-xl bg-accent/10 flex items-center justify-center text-accent-lite mb-4">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-4.5 h-4.5 w-[18px] h-[18px]">
+          <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+        </svg>
+      </div>
+      <h3 class="text-[0.88rem] font-semibold text-prose mb-1.5 tracking-tight">Smart Task Dashboard</h3>
+      <p class="text-[0.8rem] text-muted leading-relaxed">Filters for My Tasks, Overdue, Due Today, Blocked, and more — across all projects at once.</p>
     </div>
-    <div class="bg-surface border border-edge rounded-xl p-5">
-      <div class="text-2xl mb-3">🗂</div>
-      <h3 class="text-sm font-semibold text-prose mb-1.5">Kanban Board</h3>
-      <p class="text-xs text-muted leading-relaxed">Four views: urgency, status, day-by-day, or calendar. Drag tasks between columns to update them.</p>
+
+    <!-- Kanban -->
+    <div class="p-6 rounded-2xl bg-white/[0.025] border border-white/[0.06] hover:bg-white/[0.04] transition-colors">
+      <div class="w-9 h-9 rounded-xl bg-accent/10 flex items-center justify-center text-accent-lite mb-4">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-[18px] h-[18px]">
+          <rect x="3" y="3" width="4" height="14" rx="1"/><rect x="10" y="3" width="4" height="9" rx="1"/><rect x="17" y="3" width="4" height="18" rx="1"/>
+        </svg>
+      </div>
+      <h3 class="text-[0.88rem] font-semibold text-prose mb-1.5 tracking-tight">Kanban Board</h3>
+      <p class="text-[0.8rem] text-muted leading-relaxed">Four views: urgency, status, day-by-day, or calendar. Drag tasks between columns to update them.</p>
     </div>
-    <div class="bg-surface border border-edge rounded-xl p-5">
-      <div class="text-2xl mb-3">📁</div>
-      <h3 class="text-sm font-semibold text-prose mb-1.5">Project Spaces</h3>
-      <p class="text-xs text-muted leading-relaxed">Per-project workspaces with notes, meetings, tasks, booked hours, goals, and semantic search.</p>
+
+    <!-- Project Spaces -->
+    <div class="p-6 rounded-2xl bg-white/[0.025] border border-white/[0.06] hover:bg-white/[0.04] transition-colors">
+      <div class="w-9 h-9 rounded-xl bg-accent/10 flex items-center justify-center text-accent-lite mb-4">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-[18px] h-[18px]">
+          <path d="M3 7a2 2 0 012-2h4l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
+        </svg>
+      </div>
+      <h3 class="text-[0.88rem] font-semibold text-prose mb-1.5 tracking-tight">Project Spaces</h3>
+      <p class="text-[0.8rem] text-muted leading-relaxed">Per-project workspaces with notes, meetings, tasks, booked hours, goals, and semantic search.</p>
     </div>
-    <div class="bg-surface border border-edge rounded-xl p-5">
-      <div class="text-2xl mb-3">🤖</div>
-      <h3 class="text-sm font-semibold text-prose mb-1.5">AI Chat &amp; Planning</h3>
-      <p class="text-xs text-muted leading-relaxed">Ask your local LLM to plan your day, triage blockers, or summarize a project. Changes need your approval.</p>
+
+    <!-- AI Chat -->
+    <div class="p-6 rounded-2xl bg-white/[0.025] border border-white/[0.06] hover:bg-white/[0.04] transition-colors">
+      <div class="w-9 h-9 rounded-xl bg-accent/10 flex items-center justify-center text-accent-lite mb-4">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-[18px] h-[18px]">
+          <path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+        </svg>
+      </div>
+      <h3 class="text-[0.88rem] font-semibold text-prose mb-1.5 tracking-tight">AI Chat &amp; Planning</h3>
+      <p class="text-[0.8rem] text-muted leading-relaxed">Ask your local LLM to plan your day, triage blockers, or summarize a project. Changes need your approval.</p>
     </div>
-    <div class="bg-surface border border-edge rounded-xl p-5">
-      <div class="text-2xl mb-3">📄</div>
-      <h3 class="text-sm font-semibold text-prose mb-1.5">Document Processing</h3>
-      <p class="text-xs text-muted leading-relaxed">Upload meeting transcripts (.txt, .md, .pdf) and extract action items automatically.</p>
+
+    <!-- Documents -->
+    <div class="p-6 rounded-2xl bg-white/[0.025] border border-white/[0.06] hover:bg-white/[0.04] transition-colors">
+      <div class="w-9 h-9 rounded-xl bg-accent/10 flex items-center justify-center text-accent-lite mb-4">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-[18px] h-[18px]">
+          <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+        </svg>
+      </div>
+      <h3 class="text-[0.88rem] font-semibold text-prose mb-1.5 tracking-tight">Document Processing</h3>
+      <p class="text-[0.8rem] text-muted leading-relaxed">Upload meeting transcripts (.txt, .md, .pdf) and extract action items automatically.</p>
     </div>
-    <div class="bg-surface border border-edge rounded-xl p-5">
-      <div class="text-2xl mb-3">🔍</div>
-      <h3 class="text-sm font-semibold text-prose mb-1.5">Semantic Search</h3>
-      <p class="text-xs text-muted leading-relaxed">Vector-indexed notes per space. Search with natural language — powered by a local embedding model.</p>
+
+    <!-- Semantic Search -->
+    <div class="p-6 rounded-2xl bg-white/[0.025] border border-white/[0.06] hover:bg-white/[0.04] transition-colors">
+      <div class="w-9 h-9 rounded-xl bg-accent/10 flex items-center justify-center text-accent-lite mb-4">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-[18px] h-[18px]">
+          <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+        </svg>
+      </div>
+      <h3 class="text-[0.88rem] font-semibold text-prose mb-1.5 tracking-tight">Semantic Search</h3>
+      <p class="text-[0.8rem] text-muted leading-relaxed">Vector-indexed notes per space. Search with natural language — powered by a local embedding model.</p>
     </div>
-    <div class="bg-surface border border-edge rounded-xl p-5">
-      <div class="text-2xl mb-3">⏱</div>
-      <h3 class="text-sm font-semibold text-prose mb-1.5">Time Tracking</h3>
-      <p class="text-xs text-muted leading-relaxed">One-click timer on tasks, book hours per project, weekly timesheet grid, and stats view.</p>
+
+    <!-- Time Tracking -->
+    <div class="p-6 rounded-2xl bg-white/[0.025] border border-white/[0.06] hover:bg-white/[0.04] transition-colors">
+      <div class="w-9 h-9 rounded-xl bg-accent/10 flex items-center justify-center text-accent-lite mb-4">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-[18px] h-[18px]">
+          <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+      </div>
+      <h3 class="text-[0.88rem] font-semibold text-prose mb-1.5 tracking-tight">Time Tracking</h3>
+      <p class="text-[0.8rem] text-muted leading-relaxed">One-click timer on tasks, book hours per project, weekly timesheet grid, and stats view.</p>
     </div>
-    <div class="bg-surface border border-edge rounded-xl p-5">
-      <div class="text-2xl mb-3">🎯</div>
-      <h3 class="text-sm font-semibold text-prose mb-1.5">SMART Goals</h3>
-      <p class="text-xs text-muted leading-relaxed">Track goals with metric, target, current value, difficulty, and due date — linked to project spaces.</p>
+
+    <!-- SMART Goals -->
+    <div class="p-6 rounded-2xl bg-white/[0.025] border border-white/[0.06] hover:bg-white/[0.04] transition-colors">
+      <div class="w-9 h-9 rounded-xl bg-accent/10 flex items-center justify-center text-accent-lite mb-4">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-[18px] h-[18px]">
+          <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+        </svg>
+      </div>
+      <h3 class="text-[0.88rem] font-semibold text-prose mb-1.5 tracking-tight">SMART Goals</h3>
+      <p class="text-[0.8rem] text-muted leading-relaxed">Track goals with metric, target, current value, difficulty, and due date — linked to project spaces.</p>
     </div>
-    <div class="bg-surface border border-edge rounded-xl p-5">
-      <div class="text-2xl mb-3">🔌</div>
-      <h3 class="text-sm font-semibold text-prose mb-1.5">MCP Server</h3>
-      <p class="text-xs text-muted leading-relaxed">Built-in Model Context Protocol server — connect Claude Desktop or any MCP client to your vault.</p>
+
+    <!-- MCP Server -->
+    <div class="p-6 rounded-2xl bg-white/[0.025] border border-white/[0.06] hover:bg-white/[0.04] transition-colors">
+      <div class="w-9 h-9 rounded-xl bg-accent/10 flex items-center justify-center text-accent-lite mb-4">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-[18px] h-[18px]">
+          <path d="M13 10V3L4 14h7v7l9-11h-7z"/>
+        </svg>
+      </div>
+      <h3 class="text-[0.88rem] font-semibold text-prose mb-1.5 tracking-tight">MCP Server</h3>
+      <p class="text-[0.8rem] text-muted leading-relaxed">Built-in Model Context Protocol server — connect Claude Desktop or any MCP client to your vault.</p>
     </div>
+
   </div>
 </section>
 
 <!-- Screenshots -->
-<section class="max-w-5xl mx-auto px-6 pb-20">
-  <p class="text-xs font-bold uppercase tracking-[0.1em] text-accent-lite mb-3">Screenshots</p>
-  <h2 class="text-3xl font-bold tracking-tight text-prose mb-10">See it in action</h2>
+<section class="max-w-5xl mx-auto px-6 pb-28">
+  <div class="text-center mb-14">
+    <p class="text-[0.7rem] font-semibold uppercase tracking-[0.15em] text-accent-lite mb-3">Screenshots</p>
+    <h2 class="text-3xl sm:text-4xl font-bold tracking-tight text-prose">See it in action</h2>
+  </div>
 
-  <div class="grid sm:grid-cols-2 gap-4 mb-4">
-    <figure>
+  <div class="grid sm:grid-cols-2 gap-5 mb-5">
+    <figure class="m-0">
       <img src="{{ site.baseurl }}/screenshots/dark/kanban.png" alt="Kanban Board"
-           class="w-full rounded-lg border border-edge" />
-      <figcaption class="text-xs text-muted text-center mt-2">Kanban Board — time-based view</figcaption>
+           class="w-full rounded-xl border border-white/[0.07] shadow-[0_12px_40px_rgba(0,0,0,0.6)]" />
+      <figcaption class="text-[0.75rem] text-muted/70 text-center mt-3">Kanban Board — time-based view</figcaption>
     </figure>
-    <figure>
+    <figure class="m-0">
       <img src="{{ site.baseurl }}/screenshots/dark/space_notes.png" alt="Project Space"
-           class="w-full rounded-lg border border-edge" />
-      <figcaption class="text-xs text-muted text-center mt-2">Project Space — notes and tasks</figcaption>
+           class="w-full rounded-xl border border-white/[0.07] shadow-[0_12px_40px_rgba(0,0,0,0.6)]" />
+      <figcaption class="text-[0.75rem] text-muted/70 text-center mt-3">Project Space — notes and tasks</figcaption>
     </figure>
-    <figure>
+    <figure class="m-0">
       <img src="{{ site.baseurl }}/screenshots/dark/chat.png" alt="AI Chat"
-           class="w-full rounded-lg border border-edge" />
-      <figcaption class="text-xs text-muted text-center mt-2">AI Chat — local LLM planning</figcaption>
+           class="w-full rounded-xl border border-white/[0.07] shadow-[0_12px_40px_rgba(0,0,0,0.6)]" />
+      <figcaption class="text-[0.75rem] text-muted/70 text-center mt-3">AI Chat — local LLM planning</figcaption>
     </figure>
-    <figure>
+    <figure class="m-0">
       <img src="{{ site.baseurl }}/screenshots/dark/weekly_review.png" alt="Weekly Stats"
-           class="w-full rounded-lg border border-edge" />
-      <figcaption class="text-xs text-muted text-center mt-2">Stats — weekly review and hours</figcaption>
+           class="w-full rounded-xl border border-white/[0.07] shadow-[0_12px_40px_rgba(0,0,0,0.6)]" />
+      <figcaption class="text-[0.75rem] text-muted/70 text-center mt-3">Stats — weekly review and hours</figcaption>
     </figure>
   </div>
-  <div class="grid sm:grid-cols-2 gap-4">
-    <figure>
+  <div class="grid sm:grid-cols-2 gap-5">
+    <figure class="m-0">
       <img src="{{ site.baseurl }}/screenshots/dark/goals.png" alt="Goals View"
-           class="w-full rounded-lg border border-edge" />
-      <figcaption class="text-xs text-muted text-center mt-2">Goals — SMART goal tracking</figcaption>
+           class="w-full rounded-xl border border-white/[0.07] shadow-[0_12px_40px_rgba(0,0,0,0.6)]" />
+      <figcaption class="text-[0.75rem] text-muted/70 text-center mt-3">Goals — SMART goal tracking</figcaption>
     </figure>
-    <figure>
+    <figure class="m-0">
       <img src="{{ site.baseurl }}/screenshots/dark/matrix.png" alt="Eisenhower Matrix"
-           class="w-full rounded-lg border border-edge" />
-      <figcaption class="text-xs text-muted text-center mt-2">Eisenhower Matrix — drag-and-drop priority</figcaption>
+           class="w-full rounded-xl border border-white/[0.07] shadow-[0_12px_40px_rgba(0,0,0,0.6)]" />
+      <figcaption class="text-[0.75rem] text-muted/70 text-center mt-3">Eisenhower Matrix — drag-and-drop priority</figcaption>
     </figure>
   </div>
 </section>
 
-<!-- MCP -->
-<section class="max-w-5xl mx-auto px-6 pb-20">
-  <p class="text-xs font-bold uppercase tracking-[0.1em] text-accent-lite mb-3">MCP Integration</p>
-  <h2 class="text-3xl font-bold tracking-tight text-prose mb-8">Connect Claude to your vault</h2>
+<!-- MCP Integration -->
+<section class="max-w-5xl mx-auto px-6 pb-28">
+  <div class="text-center mb-14">
+    <p class="text-[0.7rem] font-semibold uppercase tracking-[0.15em] text-accent-lite mb-3">MCP Integration</p>
+    <h2 class="text-3xl sm:text-4xl font-bold tracking-tight text-prose">Connect Claude to your vault</h2>
+  </div>
 
-  <div class="bg-gradient-to-br from-accent/10 to-ok/5 border border-accent/30 rounded-xl p-6 flex gap-5 mb-6">
-    <div class="text-4xl flex-shrink-0">🔌</div>
-    <div class="min-w-0">
-      <h3 class="text-base font-bold text-prose mb-2">Built-in MCP Server</h3>
-      <p class="text-sm text-muted mb-4">Enable in Settings, connect Claude Desktop — create tasks, search notes, and manage goals directly from Claude. Includes a <code class="text-code bg-white/5 border border-edge rounded px-1.5 py-0.5 text-xs font-mono">download_skill</code> tool to fetch Claude Code skills from any HTTPS URL.</p>
-      <pre class="bg-black/40 border border-edge rounded-lg px-4 py-3 text-xs font-mono text-code overflow-x-auto">"thoughtforge": {
+  <div class="rounded-2xl border border-white/[0.08] bg-white/[0.025] overflow-hidden mb-4">
+    <div class="px-6 pt-6 pb-5 border-b border-white/[0.06]">
+      <h3 class="text-base font-semibold text-prose mb-2 tracking-tight">Built-in MCP Server</h3>
+      <p class="text-[0.85rem] text-muted leading-relaxed mb-4">Enable in Settings, connect Claude Desktop — create tasks, search notes, and manage goals directly from Claude. Includes a <code class="text-code bg-white/[0.06] border border-white/[0.08] rounded px-1.5 py-0.5 text-[0.78rem] font-mono">download_skill</code> tool to fetch Claude Code skills from any HTTPS URL.</p>
+      <pre class="bg-black/60 border border-white/[0.06] rounded-xl px-5 py-4 text-[0.78rem] font-mono text-code overflow-x-auto leading-relaxed mb-4">"thoughtforge": {
   "command": "/path/to/ThoughtForge.app/Contents/MacOS/vaultmind-mcp",
   "args": ["--stdio"]
 }</pre>
-      <a href="{{ site.baseurl }}/mcp" class="text-sm text-accent-lite hover:underline">Read the full MCP documentation →</a>
+      <a href="{{ site.baseurl }}/mcp" class="text-[0.85rem] text-accent-lite hover:underline">Read the full MCP documentation →</a>
     </div>
-  </div>
 
-  <div class="flex flex-wrap gap-4 bg-surface border border-edge rounded-xl px-6 py-4">
-    <div class="flex items-center gap-2 text-sm text-muted"><span class="w-2 h-2 rounded-full bg-ok flex-shrink-0"></span>Zero outbound connections</div>
-    <div class="flex items-center gap-2 text-sm text-muted"><span class="w-2 h-2 rounded-full bg-ok flex-shrink-0"></span>Binds to 127.0.0.1 only</div>
-    <div class="flex items-center gap-2 text-sm text-muted"><span class="w-2 h-2 rounded-full bg-ok flex-shrink-0"></span>Bearer token auth</div>
-    <div class="flex items-center gap-2 text-sm text-muted"><span class="w-2 h-2 rounded-full bg-ok flex-shrink-0"></span>Constant-time token comparison</div>
-    <div class="flex items-center gap-2 text-sm text-muted"><span class="w-2 h-2 rounded-full bg-ok flex-shrink-0"></span>Path traversal validation</div>
-    <div class="flex items-center gap-2 text-sm text-muted"><span class="w-2 h-2 rounded-full bg-ok flex-shrink-0"></span>SSRF guard on skill downloads</div>
+    <div class="px-6 py-4 flex flex-wrap gap-5">
+      <div class="flex items-center gap-2 text-[0.8rem] text-muted">
+        <span class="w-1.5 h-1.5 rounded-full bg-ok flex-shrink-0"></span>Zero outbound connections
+      </div>
+      <div class="flex items-center gap-2 text-[0.8rem] text-muted">
+        <span class="w-1.5 h-1.5 rounded-full bg-ok flex-shrink-0"></span>Binds to 127.0.0.1 only
+      </div>
+      <div class="flex items-center gap-2 text-[0.8rem] text-muted">
+        <span class="w-1.5 h-1.5 rounded-full bg-ok flex-shrink-0"></span>Bearer token auth
+      </div>
+      <div class="flex items-center gap-2 text-[0.8rem] text-muted">
+        <span class="w-1.5 h-1.5 rounded-full bg-ok flex-shrink-0"></span>Constant-time token comparison
+      </div>
+      <div class="flex items-center gap-2 text-[0.8rem] text-muted">
+        <span class="w-1.5 h-1.5 rounded-full bg-ok flex-shrink-0"></span>Path traversal validation
+      </div>
+      <div class="flex items-center gap-2 text-[0.8rem] text-muted">
+        <span class="w-1.5 h-1.5 rounded-full bg-ok flex-shrink-0"></span>SSRF guard on skill downloads
+      </div>
+    </div>
   </div>
 </section>
 
-<!-- Stack -->
-<section class="max-w-5xl mx-auto px-6 pb-20">
-  <p class="text-xs font-bold uppercase tracking-[0.1em] text-accent-lite mb-3">Built with</p>
-  <h2 class="text-3xl font-bold tracking-tight text-prose mb-8">Open, auditable, and fast</h2>
+<!-- Tech Stack -->
+<section class="max-w-5xl mx-auto px-6 pb-28">
+  <div class="text-center mb-14">
+    <p class="text-[0.7rem] font-semibold uppercase tracking-[0.15em] text-accent-lite mb-3">Built with</p>
+    <h2 class="text-3xl sm:text-4xl font-bold tracking-tight text-prose">Open, auditable, and fast</h2>
+  </div>
 
-  <div class="bg-surface border border-edge rounded-xl overflow-hidden">
-    <table class="w-full text-sm">
+  <div class="rounded-2xl border border-white/[0.07] overflow-hidden">
+    <table class="w-full text-[0.85rem]">
       <thead>
-        <tr class="border-b border-edge">
-          <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-widest text-muted w-2/5">Layer</th>
-          <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-widest text-muted">Technology</th>
+        <tr class="border-b border-white/[0.06]">
+          <th class="text-left px-6 py-3.5 text-[0.7rem] font-semibold uppercase tracking-[0.1em] text-muted/60 w-2/5">Layer</th>
+          <th class="text-left px-6 py-3.5 text-[0.7rem] font-semibold uppercase tracking-[0.1em] text-muted/60">Technology</th>
         </tr>
       </thead>
-      <tbody class="divide-y divide-edge">
-        <tr><td class="px-5 py-3 text-muted">App framework</td><td class="px-5 py-3 text-prose">Tauri 2.x (Rust backend + WebView frontend)</td></tr>
-        <tr><td class="px-5 py-3 text-muted">Frontend</td><td class="px-5 py-3 text-prose">React 19 + TypeScript + Tailwind CSS</td></tr>
-        <tr><td class="px-5 py-3 text-muted">State</td><td class="px-5 py-3 text-prose">Zustand</td></tr>
-        <tr><td class="px-5 py-3 text-muted">LLM</td><td class="px-5 py-3 text-prose">OpenAI-compatible API via LM Studio (localhost only)</td></tr>
-        <tr><td class="px-5 py-3 text-muted">Semantic search</td><td class="px-5 py-3 text-prose">turbovec vector math + local embeddings</td></tr>
-        <tr><td class="px-5 py-3 text-muted">Storage</td><td class="px-5 py-3 text-prose">Markdown + JSON files — no database</td></tr>
-        <tr><td class="px-5 py-3 text-muted">MCP</td><td class="px-5 py-3 text-prose">rmcp (Rust, stdio + HTTP transport)</td></tr>
+      <tbody>
+        <tr class="border-b border-white/[0.04]">
+          <td class="px-6 py-3.5 text-muted">App framework</td>
+          <td class="px-6 py-3.5 text-prose">Tauri 2.x (Rust backend + WebView frontend)</td>
+        </tr>
+        <tr class="border-b border-white/[0.04]">
+          <td class="px-6 py-3.5 text-muted">Frontend</td>
+          <td class="px-6 py-3.5 text-prose">React 19 + TypeScript + Tailwind CSS</td>
+        </tr>
+        <tr class="border-b border-white/[0.04]">
+          <td class="px-6 py-3.5 text-muted">State</td>
+          <td class="px-6 py-3.5 text-prose">Zustand</td>
+        </tr>
+        <tr class="border-b border-white/[0.04]">
+          <td class="px-6 py-3.5 text-muted">LLM</td>
+          <td class="px-6 py-3.5 text-prose">OpenAI-compatible API via LM Studio (localhost only)</td>
+        </tr>
+        <tr class="border-b border-white/[0.04]">
+          <td class="px-6 py-3.5 text-muted">Semantic search</td>
+          <td class="px-6 py-3.5 text-prose">turbovec vector math + local embeddings</td>
+        </tr>
+        <tr class="border-b border-white/[0.04]">
+          <td class="px-6 py-3.5 text-muted">Storage</td>
+          <td class="px-6 py-3.5 text-prose">Markdown + JSON files — no database</td>
+        </tr>
+        <tr>
+          <td class="px-6 py-3.5 text-muted">MCP</td>
+          <td class="px-6 py-3.5 text-prose">rmcp (Rust, stdio + HTTP transport)</td>
+        </tr>
       </tbody>
     </table>
   </div>
 </section>
 
 <!-- CTA -->
-<section class="max-w-5xl mx-auto px-6 pb-24 text-center">
-  <h2 class="text-3xl font-bold tracking-tight text-prose mb-3">Ready to plan without the cloud?</h2>
-  <p class="text-muted mb-8">macOS · Free · Open Source</p>
+<section class="max-w-2xl mx-auto px-6 pb-28 text-center">
+  <h2 class="text-3xl sm:text-4xl font-bold tracking-tight text-prose mb-3">Ready to plan without the cloud?</h2>
+  <p class="text-muted mb-8">macOS &nbsp;·&nbsp; Free &nbsp;·&nbsp; Open Source</p>
   <div class="flex gap-3 justify-center flex-wrap">
     <a href="https://github.com/larsroettig/thoughtforge/releases/latest"
-       class="inline-flex items-center gap-2 bg-accent text-white font-semibold px-6 py-3 rounded-lg text-sm hover:opacity-90 transition-opacity">
-      ⬇ Download ThoughtForge
+       class="inline-flex items-center gap-2 bg-accent text-white font-semibold px-7 py-3.5 rounded-full text-sm hover:bg-accent/90 transition-colors">
+      Download ThoughtForge
     </a>
     <a href="{{ site.baseurl }}/user-guide"
-       class="inline-flex items-center gap-2 bg-surface border border-edge text-prose font-semibold px-6 py-3 rounded-lg text-sm hover:border-muted transition-colors">
+       class="inline-flex items-center gap-2 bg-white/[0.05] border border-white/[0.1] text-prose font-semibold px-7 py-3.5 rounded-full text-sm hover:bg-white/[0.09] transition-colors">
       Read the User Guide
     </a>
   </div>

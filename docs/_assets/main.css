@@ -3,6 +3,14 @@
 @tailwind utilities;
 
 @layer base {
-  body { @apply bg-bg text-prose antialiased; }
-  a { @apply text-accent-lite no-underline hover:underline; }
+  html {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    scroll-padding-top: 52px;
+  }
+  body {
+    @apply bg-bg text-prose antialiased;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  a { @apply no-underline; }
 }

@@ -23,14 +23,15 @@
   <link rel="canonical" href="{{ site.url }}{{ site.baseurl }}{{ page.url }}" />
   <link rel="stylesheet" href="{{ site.baseurl }}/assets/style.css" />
 </head>
-<body class="bg-bg text-prose antialiased">
+<body class="bg-bg text-prose antialiased pt-[52px]">
 
-  <nav class="sticky top-0 z-20 flex items-center justify-between px-6 py-3 border-b border-edge bg-bg/95 backdrop-blur">
-    <a href="{{ site.baseurl }}/" class="flex items-center gap-2 hover:opacity-80 transition-opacity">
-      <img src="{{ site.baseurl }}/assets/thoughtforge.png" alt="ThoughtForge" class="h-7 w-7 rounded-md" />
-      <span class="font-bold text-[1.05rem] text-prose">ThoughtForge</span>
+  <!-- Navigation -->
+  <nav class="fixed top-0 inset-x-0 z-50 flex items-center justify-between px-8 h-[52px] bg-black/75 backdrop-blur-2xl border-b border-white/[0.07]">
+    <a href="{{ site.baseurl }}/" class="flex items-center gap-2.5 hover:opacity-75 transition-opacity">
+      <img src="{{ site.baseurl }}/assets/thoughtforge.png" alt="ThoughtForge" class="h-6 w-6 rounded-[6px]" />
+      <span class="font-semibold text-[0.95rem] tracking-tight text-prose">ThoughtForge</span>
     </a>
-    <div class="flex items-center gap-6 text-sm">
+    <div class="flex items-center gap-7 text-[0.82rem] font-medium">
       <a href="{{ site.baseurl }}/user-guide"
          class="transition-colors {% if page.url contains 'user-guide' %}text-prose{% else %}text-muted hover:text-prose{% endif %}">
         User Guide
@@ -39,8 +40,13 @@
          class="transition-colors {% if page.url contains '/mcp' %}text-prose{% else %}text-muted hover:text-prose{% endif %}">
         MCP Docs
       </a>
-      <a href="https://github.com/larsroettig/thoughtforge" class="text-muted hover:text-prose transition-colors">
-        GitHub ↗
+      <a href="https://github.com/larsroettig/thoughtforge"
+         class="text-muted hover:text-prose transition-colors">
+        GitHub
+      </a>
+      <a href="https://github.com/larsroettig/thoughtforge/releases/latest"
+         class="bg-accent text-white px-4 py-1.5 rounded-full text-[0.8rem] font-semibold hover:bg-accent/90 transition-colors">
+        Download
       </a>
     </div>
   </nav>
@@ -53,13 +59,19 @@
   {{ content }}
   {% endif %}
 
-  <footer class="border-t border-edge py-8 text-center text-sm text-muted">
-    Built by
-    <a href="https://github.com/larsroettig" class="hover:text-prose transition-colors">Lars Roettig</a> ·
-    <a href="https://github.com/larsroettig/thoughtforge" class="hover:text-prose transition-colors">GitHub</a> ·
-    <a href="{{ site.baseurl }}/mcp" class="hover:text-prose transition-colors">MCP Docs</a> ·
-    <a href="{{ site.baseurl }}/user-guide" class="hover:text-prose transition-colors">User Guide</a> ·
-    MIT License
+  <!-- Footer -->
+  <footer class="py-10 text-center border-t border-white/[0.06]">
+    <p class="text-[0.8rem] text-muted/60">
+      Built by <a href="https://github.com/larsroettig" class="text-muted hover:text-prose transition-colors">Lars Roettig</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/larsroettig/thoughtforge" class="hover:text-prose transition-colors">GitHub</a>
+      &nbsp;·&nbsp;
+      <a href="{{ site.baseurl }}/mcp" class="hover:text-prose transition-colors">MCP Docs</a>
+      &nbsp;·&nbsp;
+      <a href="{{ site.baseurl }}/user-guide" class="hover:text-prose transition-colors">User Guide</a>
+      &nbsp;·&nbsp;
+      MIT License
+    </p>
   </footer>
 
 </body>
