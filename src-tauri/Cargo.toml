@@ -1,6 +1,6 @@
 [package]
 name = "thoughtforge"
-version = "1.2.0"
+version = "1.2.1"
 description = "ThoughtForge - Local-First AI Planning Assistant"
 authors = ["Lars Roettig"]
 edition = "2021"

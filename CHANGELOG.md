@@ -2,6 +2,14 @@
 
 All notable changes to ThoughtForge are documented here.
 
+## [1.2.1] — 2026-05-17
+
+### Fixed
+- **Note list search** — added text filter input to the Notes and Meetings sidebar; filters by title and content in real time
+- **Semantic search errors** — "No models loaded" and "No index yet" now show clear, actionable messages instead of raw HTTP error JSON
+
+---
+
 ## [1.2.0] — 2026-05-16
 
 ### Added
