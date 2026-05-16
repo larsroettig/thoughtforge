@@ -5,6 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% if page.title %}{{ page.title }} — {{ site.title }}{% else %}{{ site.title }}{% endif %}</title>
   <meta name="description" content="{% if page.description %}{{ page.description }}{% else %}{{ site.description }}{% endif %}" />
+
+  <!-- Open Graph / social card -->
+  {% assign og_title = page.title | default: site.title %}
+  {% assign og_desc  = page.description | default: site.description %}
+  <meta property="og:type"        content="website" />
+  <meta property="og:site_name"   content="{{ site.title }}" />
+  <meta property="og:title"       content="{{ og_title }}" />
+  <meta property="og:description" content="{{ og_desc }}" />
+  <meta property="og:url"         content="{{ site.url }}{{ site.baseurl }}{{ page.url }}" />
+  <meta property="og:image"       content="{{ site.url }}{{ site.baseurl }}/screenshots/dark/dashboard.png" />
+  <meta name="twitter:card"       content="summary_large_image" />
+  <meta name="twitter:title"      content="{{ og_title }}" />
+  <meta name="twitter:description" content="{{ og_desc }}" />
+  <meta name="twitter:image"      content="{{ site.url }}{{ site.baseurl }}/screenshots/dark/dashboard.png" />
+
+  <link rel="canonical" href="{{ site.url }}{{ site.baseurl }}{{ page.url }}" />
   <link rel="stylesheet" href="{{ site.baseurl }}/assets/style.css" />
 </head>
 <body class="bg-bg text-prose antialiased">
@@ -29,7 +45,13 @@
     </div>
   </nav>
 
+  {% if page.prose %}
+  <main class="max-w-3xl mx-auto px-6 py-16 prose prose-tf">
+    {{ content }}
+  </main>
+  {% else %}
   {{ content }}
+  {% endif %}
 
   <footer class="border-t border-edge py-8 text-center text-sm text-muted">
     Built by

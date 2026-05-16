@@ -2,6 +2,7 @@
 layout: default
 title: User Guide
 description: Get started with ThoughtForge — local AI planning for macOS.
+prose: true
 ---
 
 # ThoughtForge User Guide

@@ -2,6 +2,7 @@
 layout: default
 title: MCP Server Docs
 description: Connect Claude Desktop and other MCP clients to your ThoughtForge vault.
+prose: true
 ---
 
 # ThoughtForge MCP Server

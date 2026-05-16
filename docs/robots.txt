@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://larsroettig.github.io/thoughtforge/sitemap.xml

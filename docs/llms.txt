@@ -1,0 +1,39 @@
+# ThoughtForge
+
+> Local-first AI planning assistant for macOS. Manage tasks, write notes, chat with a local LLM — no cloud, no tracking.
+
+ThoughtForge is a free, open-source desktop app built with Tauri (Rust + React). All data is stored as plain Markdown and JSON files on your machine. Nothing is sent to the internet except the LLM calls, which go only to a local LM Studio instance running on localhost.
+
+## Features
+
+- Smart task dashboard with filters (My Tasks, Overdue, Due Today, Blocked)
+- Kanban board: urgency, status, day-by-day, and calendar views
+- Project spaces with notes, meetings, tasks, booked hours, and goals
+- AI chat with a local LLM (LM Studio, OpenAI-compatible API)
+- Document processing: upload transcripts and extract action items automatically
+- Semantic search: vector-indexed notes powered by a local embedding model
+- Time tracking: one-click timer, per-project hours, weekly timesheet
+- SMART Goals: metric, target, current value, difficulty, due date — linked to projects
+- Eisenhower Matrix: drag-and-drop task prioritization
+- Built-in MCP server: connect Claude Desktop or any MCP client to your vault
+
+## Tech stack
+
+- App framework: Tauri 2.x (Rust backend + WebView frontend)
+- Frontend: React 19 + TypeScript + Tailwind CSS
+- State: Zustand
+- LLM: OpenAI-compatible API via LM Studio (localhost only)
+- Semantic search: turbovec + local embedding model
+- Storage: Markdown + JSON files — no database
+- MCP: rmcp (Rust, stdio + HTTP transport)
+
+## Documentation
+
+- User Guide: https://larsroettig.github.io/thoughtforge/user-guide
+- MCP Docs: https://larsroettig.github.io/thoughtforge/mcp
+- GitHub: https://github.com/larsroettig/thoughtforge
+- Releases: https://github.com/larsroettig/thoughtforge/releases/latest
+
+## License
+
+MIT License. Free to use, fork, and distribute.
