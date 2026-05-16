@@ -24,6 +24,7 @@ import {
   Eye,
   PenLine,
   ListPlus,
+  Search,
 } from "lucide-react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
@@ -86,6 +87,8 @@ export function ProjectSpaceView() {
   const [showCreateTask, setShowCreateTask] = useState(false);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [noteFilter, setNoteFilter] = useState("");
+
   // Knowledge search state
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<NoteSearchResult[]>([]);
@@ -105,6 +108,7 @@ export function ProjectSpaceView() {
       loadSpaceNotes(activeSpaceId);
       setEditingNote(null);
       setActiveTab("overview");
+      setNoteFilter("");
     }
   }, [activeSpaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -179,6 +183,23 @@ export function ProjectSpaceView() {
     () => [...notes].sort((a, b) => b.date.localeCompare(a.date)),
     [notes]
   );
+
+  const filteredListNotes = useMemo(() => {
+    const q = noteFilter.trim().toLowerCase();
+    const base = allNotes.filter((n) => n.type !== "meeting");
+    if (!q) return base;
+    return base.filter((n) =>
+      n.title.toLowerCase().includes(q) || n.content.toLowerCase().includes(q)
+    );
+  }, [allNotes, noteFilter]);
+
+  const filteredListMeetings = useMemo(() => {
+    const q = noteFilter.trim().toLowerCase();
+    if (!q) return meetingNotes;
+    return meetingNotes.filter((n) =>
+      n.title.toLowerCase().includes(q) || n.content.toLowerCase().includes(q)
+    );
+  }, [meetingNotes, noteFilter]);
 
   // ── Auto-save (3 second debounce) ──────────────────────────────────
   const persistCurrentSpace = useCallback(async () => {
@@ -689,7 +710,7 @@ export function ProjectSpaceView() {
           <div className="flex-1 overflow-hidden flex gap-6 p-6">
             {/* Note List */}
             <div className="w-64 flex-shrink-0 flex flex-col">
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between mb-2">
                 <h3 className="text-sm font-semibold text-vault-text-bright">
                   {activeTab === "meetings" ? "Meetings" : "Notes"}
                 </h3>
@@ -701,10 +722,30 @@ export function ProjectSpaceView() {
                 </button>
               </div>
 
-              {activeTab === "notes" && (
+              {/* Text filter */}
+              <div className="relative mb-2">
+                <Search className="w-3 h-3 text-vault-text-muted absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={noteFilter}
+                  onChange={(e) => setNoteFilter(e.target.value)}
+                  placeholder="Filter…"
+                  className="input-base w-full text-xs pl-6 pr-6 py-1"
+                />
+                {noteFilter && (
+                  <button
+                    onClick={() => setNoteFilter("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-vault-text-muted hover:text-vault-text"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+
+              {activeTab === "notes" && !noteFilter && (
                 <button
                   onClick={() => handleCreateNote("daily")}
-                  className="card-base w-full p-2.5 text-xs text-left mb-3 hover:border-vault-accent flex items-center gap-2"
+                  className="card-base w-full p-2.5 text-xs text-left mb-2 hover:border-vault-accent flex items-center gap-2"
                 >
                   <Calendar className="w-3.5 h-3.5 text-vault-accent" />
                   <span className="text-vault-accent font-medium">Today's Daily Note</span>
@@ -712,7 +753,7 @@ export function ProjectSpaceView() {
               )}
 
               <div className="flex-1 overflow-y-auto space-y-1.5">
-                {(activeTab === "meetings" ? meetingNotes : allNotes.filter((n) => n.type !== "meeting")).map((note) => (
+                {(activeTab === "meetings" ? filteredListMeetings : filteredListNotes).map((note) => (
                   <button
                     key={note.id}
                     onClick={() => { setEditingNote(note); setPreviewMode(false); }}
@@ -982,8 +1023,14 @@ export function ProjectSpaceView() {
 
             {/* Error banner */}
             {searchError && (
-              <div className="card-base p-3 border-vault-critical/30 bg-vault-critical/5 text-xs text-vault-critical">
-                {searchError}
+              <div className="card-base p-3 border-vault-warning/30 bg-vault-warning/5 text-xs text-vault-warning space-y-1">
+                <p className="font-medium">
+                  {searchError.includes("No models loaded") || searchError.includes("No index yet")
+                    ? searchError.includes("No index yet")
+                      ? "Notes not indexed yet — click Index Notes to build the search index."
+                      : "No embedding model loaded in LM Studio. Run: lms load nomic-embed-text-v1.5"
+                    : searchError}
+                </p>
               </div>
             )}
 
