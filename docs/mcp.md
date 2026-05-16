@@ -1,3 +1,9 @@
+---
+layout: default
+title: MCP Server Docs
+description: Connect Claude Desktop and other MCP clients to your ThoughtForge vault.
+---
+
 # ThoughtForge MCP Server
 
 ThoughtForge ships a built-in **Model Context Protocol (MCP) server** that lets Claude and other MCP clients read and write your vault directly — without the GUI. This means you can ask Claude to create tasks, update goals, search your notes, and manage project spaces from any MCP-compatible chat interface.

@@ -1,0 +1,12 @@
+{
+  "name": "thoughtforge-docs",
+  "private": true,
+  "scripts": {
+    "build:css": "tailwindcss -i _assets/main.css -o assets/style.css --minify",
+    "watch:css": "tailwindcss -i _assets/main.css -o assets/style.css --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/typography": "^0.5.13",
+    "tailwindcss": "^3.4.4"
+  }
+}

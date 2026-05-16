@@ -49,3 +49,9 @@ npm-debug.log*
 # Screenshot scripts (personal paths, not part of app)
 scripts/take-screenshots.sh
 scripts/take-screenshots.cjs
+
+# Docs: generated Tailwind output (built by CI)
+docs/assets/style.css
+docs/_site/
+docs/.jekyll-cache/
+docs/Gemfile.lock

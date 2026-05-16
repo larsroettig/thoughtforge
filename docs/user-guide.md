@@ -1,3 +1,9 @@
+---
+layout: default
+title: User Guide
+description: Get started with ThoughtForge — local AI planning for macOS.
+---
+
 # ThoughtForge User Guide
 
 ThoughtForge is a local-first AI planning assistant for macOS. It keeps everything on your machine — tasks, notes, and AI conversations never leave your computer.

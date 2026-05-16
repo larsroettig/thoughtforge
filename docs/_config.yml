@@ -1,5 +1,4 @@
 title: ThoughtForge
-description: Local-first AI planning assistant for macOS
-theme: null
-exclude:
-  - screenshots/
+description: Local-first AI planning assistant for macOS. Tasks, notes, and AI chat — all on your machine.
+url: https://larsroettig.github.io
+baseurl: /thoughtforge

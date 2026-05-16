@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% if page.title %}{{ page.title }} — {{ site.title }}{% else %}{{ site.title }}{% endif %}</title>
+  <meta name="description" content="{% if page.description %}{{ page.description }}{% else %}{{ site.description }}{% endif %}" />
+  <link rel="stylesheet" href="{{ site.baseurl }}/assets/style.css" />
+</head>
+<body class="bg-bg text-prose antialiased">
+
+  <nav class="sticky top-0 z-20 flex items-center justify-between px-6 py-3 border-b border-edge bg-bg/95 backdrop-blur">
+    <a href="{{ site.baseurl }}/" class="flex items-center gap-2 hover:opacity-80 transition-opacity">
+      <img src="{{ site.baseurl }}/assets/thoughtforge.png" alt="ThoughtForge" class="h-7 w-7 rounded-md" />
+      <span class="font-bold text-[1.05rem] text-prose">ThoughtForge</span>
+    </a>
+    <div class="flex items-center gap-6 text-sm">
+      <a href="{{ site.baseurl }}/user-guide"
+         class="transition-colors {% if page.url contains 'user-guide' %}text-prose{% else %}text-muted hover:text-prose{% endif %}">
+        User Guide
+      </a>
+      <a href="{{ site.baseurl }}/mcp"
+         class="transition-colors {% if page.url contains '/mcp' %}text-prose{% else %}text-muted hover:text-prose{% endif %}">
+        MCP Docs
+      </a>
+      <a href="https://github.com/larsroettig/thoughtforge" class="text-muted hover:text-prose transition-colors">
+        GitHub ↗
+      </a>
+    </div>
+  </nav>
+
+  {{ content }}
+
+  <footer class="border-t border-edge py-8 text-center text-sm text-muted">
+    Built by
+    <a href="https://github.com/larsroettig" class="hover:text-prose transition-colors">Lars Roettig</a> ·
+    <a href="https://github.com/larsroettig/thoughtforge" class="hover:text-prose transition-colors">GitHub</a> ·
+    <a href="{{ site.baseurl }}/mcp" class="hover:text-prose transition-colors">MCP Docs</a> ·
+    <a href="{{ site.baseurl }}/user-guide" class="hover:text-prose transition-colors">User Guide</a> ·
+    MIT License
+  </footer>
+
+</body>
+</html>
