@@ -1,6 +1,7 @@
 # ThoughtForge
 
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/larsroettig/thoughtforge/badge)](https://scorecard.dev/viewer/?uri=github.com/larsroettig/thoughtforge)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12872/badge)](https://www.bestpractices.dev/projects/12872)
 
 <img width="1774" height="887" alt="image" src="https://github.com/user-attachments/assets/7ef1efc4-a8de-4be5-9f0d-b2f6fd3e18fd" />
 
@@ -147,10 +148,21 @@ See **[docs/mcp.md](docs/mcp.md)** for the full tool reference and HTTP transpor
 - **[MCP Server](docs/mcp.md)** — Claude Desktop integration, tool reference, security
 - **[GitHub Pages](https://larsroettig.github.io/thoughtforge/)** — landing page
 
+## Security & Permissions
+
+ThoughtForge requests only the Tauri capabilities it needs. See **[PERMISSIONS.md](PERMISSIONS.md)** for a full table of every granted permission, the code that uses it, and the rationale.
+
+Key points:
+- **No network calls outside localhost** — SSRF guard in `src-tauri/src/llm.rs` blocks all non-localhost hosts
+- **No telemetry** — the app cannot phone home
+- **Frontend never touches the filesystem directly** — all I/O goes through validated Rust commands
+- **MCP bearer token** compared with constant-time equality
+
 ## Testing
 
 ```bash
-npm test                          # TypeScript/Vitest
+npm test                          # Vitest unit tests
+npm run test:e2e                  # Playwright E2E (requires: npm run dev in another terminal)
 cd src-tauri && cargo test        # Rust unit tests
 ```
 

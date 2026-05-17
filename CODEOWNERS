@@ -1,0 +1,8 @@
+# Global owner — reviews required on all PRs
+* @larsroettig
+
+# Rust backend — security-sensitive
+src-tauri/src/ @larsroettig
+
+# CI / security workflows
+.github/ @larsroettig

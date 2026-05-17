@@ -49,14 +49,16 @@ fn load_cache(space_id: &str) -> EmbedCache {
     let new_path = embed_cache_path(space_id);
     if new_path.exists() {
         let content = fs::read_to_string(&new_path).unwrap_or_default();
-        return serde_json::from_str(&content).unwrap_or_default();
+        return serde_json::from_str(&content)
+            .unwrap_or_else(|e| { eprintln!("[search] cache parse error: {e}"); Default::default() });
     }
 
     // One-time migration: old path is search_index.json (same JSON shape).
     let old_path = space_dir(space_id).join("search_index.json");
     if old_path.exists() {
         let content = fs::read_to_string(&old_path).unwrap_or_default();
-        let cache: EmbedCache = serde_json::from_str(&content).unwrap_or_default();
+        let cache: EmbedCache = serde_json::from_str(&content)
+            .unwrap_or_else(|e| { eprintln!("[search] cache parse error: {e}"); Default::default() });
         // Persist under the new name so this branch is only hit once.
         let _ = save_cache(space_id, &cache);
         return cache;

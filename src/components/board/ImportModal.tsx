@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   X,
   Upload,
@@ -11,6 +11,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { useVault } from "@/hooks/useVault";
 import { useAppStore } from "@/stores/appStore";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import type { Task, TaskPriority, TaskUrgency } from "@/types";
 import { PROJECT_COLORS } from "@/types";
 
@@ -100,6 +101,13 @@ export function ImportModal({ onClose }: ImportModalProps) {
   const [importDone, setImportDone] = useState(false);
 
   const { saveTask, loadTasks } = useVault();
+  const trapRef = useFocusTrap<HTMLDivElement>();
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
 
   const handleFileSelect = useCallback(async () => {
     const file = await open({
@@ -204,18 +212,24 @@ export function ImportModal({ onClose }: ImportModalProps) {
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-vault-surface border border-vault-border rounded-xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+      <div
+        ref={trapRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="import-modal-title"
+        className="bg-vault-surface border border-vault-border rounded-xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col"
+      >
         {/* Header */}
         <div className="px-6 py-4 border-b border-vault-border flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-bold text-vault-text-bright">
+            <h3 id="import-modal-title" className="text-lg font-bold text-vault-text-bright">
               Import Tasks
             </h3>
             <p className="text-xs text-vault-text-muted mt-0.5">
               Import from JSON files or Markdown checklists
             </p>
           </div>
-          <button onClick={onClose} className="btn-ghost p-1">
+          <button onClick={onClose} aria-label="Close dialog" className="btn-ghost p-1">
             <X className="w-5 h-5" />
           </button>
         </div>

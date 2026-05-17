@@ -16,10 +16,6 @@ struct Args {
     /// Override vault path
     #[arg(long)]
     vault: Option<String>,
-
-    /// Override Bearer token (defaults to config.yaml mcp_token)
-    #[arg(long)]
-    token: Option<String>,
 }
 
 #[tokio::main]
@@ -31,7 +27,7 @@ async fn main() {
     }
 
     let config = vault::vault_config();
-    let token = args.token.unwrap_or(config.mcp_token);
+    let token = std::env::var("VAULTMIND_MCP_TOKEN").unwrap_or(config.mcp_token);
     let server = VaultMcpServer::new(token.clone());
 
     if args.stdio {

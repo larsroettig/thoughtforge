@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X, Plus } from "lucide-react";
 import { useAppStore } from "@/stores/appStore";
 import { useVault } from "@/hooks/useVault";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import type { ProjectSpace } from "@/types";
 
 interface Props {
@@ -19,6 +20,13 @@ export function CreateSpaceModal({ onClose }: Props) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [color, setColor] = useState(COLORS[0]);
+  const trapRef = useFocusTrap<HTMLDivElement>();
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
 
   const handleCreate = async () => {
     if (!name.trim()) return;
@@ -42,18 +50,25 @@ export function CreateSpaceModal({ onClose }: Props) {
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-vault-surface border border-vault-border rounded-xl w-full max-w-md">
+      <div
+        ref={trapRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="create-space-title"
+        className="bg-vault-surface border border-vault-border rounded-xl w-full max-w-md"
+      >
         <div className="flex items-center justify-between px-6 py-4 border-b border-vault-border">
-          <h3 className="text-lg font-bold text-vault-text-bright">New Project Space</h3>
-          <button onClick={onClose} className="btn-ghost p-1"><X className="w-5 h-5" /></button>
+          <h3 id="create-space-title" className="text-lg font-bold text-vault-text-bright">New Project Space</h3>
+          <button onClick={onClose} aria-label="Close dialog" className="btn-ghost p-1"><X className="w-5 h-5" /></button>
         </div>
 
         <div className="px-6 py-4 space-y-4">
           <div>
-            <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
+            <label htmlFor="space-name" className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
               Project Name
             </label>
             <input
+              id="space-name"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -64,10 +79,11 @@ export function CreateSpaceModal({ onClose }: Props) {
           </div>
 
           <div>
-            <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
+            <label htmlFor="space-description" className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
               Description
             </label>
             <textarea
+              id="space-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Brief description of this project..."
@@ -84,6 +100,8 @@ export function CreateSpaceModal({ onClose }: Props) {
                 <button
                   key={c}
                   onClick={() => setColor(c)}
+                  aria-label={`Select color ${c}`}
+                  aria-pressed={color === c}
                   className={`w-7 h-7 rounded-full border-2 transition-transform ${
                     color === c ? "border-vault-text-bright scale-110" : "border-transparent"
                   }`}

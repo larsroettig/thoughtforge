@@ -492,15 +492,16 @@ ${taskLines || "(none)"}`;
         { role: "user", content: userMessage },
       ];
 
-      let streamedText = "";
+      const chunks: string[] = [];
       let cancelled = false;
       const cleanup = await streamChat(
         messages,
-        (chunk) => { streamedText += chunk; onChunk(chunk); },
+        (chunk) => { chunks.push(chunk); onChunk(chunk); },
         () => {
           onDone(); // immediately unblock UI
           void (async () => {
             if (cancelled) return;
+            const streamedText = chunks.join("");
             const actions = await extractActionsFromText(streamedText);
             if (!cancelled) onActions(actions);
           })();
@@ -549,15 +550,16 @@ Keep answers concise and grounded in the actual data shown.`;
         { role: "user", content: userMessage },
       ];
 
-      let streamedText = "";
+      const chunks: string[] = [];
       let cancelled = false;
       const cleanup = await streamChat(
         messages,
-        (chunk) => { streamedText += chunk; onChunk(chunk); },
+        (chunk) => { chunks.push(chunk); onChunk(chunk); },
         () => {
           onDone(); // immediately unblock UI
           void (async () => {
             if (cancelled) return;
+            const streamedText = chunks.join("");
             const actions = await extractActionsFromText(streamedText);
             if (!cancelled) onActions(actions);
           })();

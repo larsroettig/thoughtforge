@@ -40,7 +40,7 @@ pub fn get_system_info() -> SystemInfo {
     #[cfg(target_os = "macos")]
     if total_bytes == 0 {
         // `sysctl hw.memsize` always works on macOS without special entitlements.
-        if let Ok(out) = std::process::Command::new("sysctl")
+        if let Ok(out) = std::process::Command::new("/usr/sbin/sysctl")
             .args(["-n", "hw.memsize"])
             .output()
         {
@@ -158,7 +158,7 @@ pub fn read_space_notes_internal(space_id: &str) -> Result<Vec<NoteData>, String
             continue;
         }
         let content = fs::read_to_string(&path)
-            .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+            .map_err(|e| { eprintln!("[vault] read error {}: {}", path.display(), e); "File read failed".to_string() })?;
         if let Some(note) = parse_note_markdown(&content) {
             notes.push(note);
         }
@@ -416,7 +416,7 @@ fn read_tasks_from_dir(dir: &std::path::Path, tasks: &mut Vec<TaskData>) -> Resu
         return Ok(());
     }
     let entries = fs::read_dir(dir)
-        .map_err(|e| format!("Failed to read tasks dir {}: {}", dir.display(), e))?;
+        .map_err(|e| { eprintln!("[vault] read tasks dir error {}: {}", dir.display(), e); "Failed to read tasks directory".to_string() })?;
 
     for entry in entries.flatten() {
         let path = entry.path();
@@ -424,7 +424,7 @@ fn read_tasks_from_dir(dir: &std::path::Path, tasks: &mut Vec<TaskData>) -> Resu
             continue;
         }
         let content = fs::read_to_string(&path)
-            .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+            .map_err(|e| { eprintln!("[vault] read error {}: {}", path.display(), e); "File read failed".to_string() })?;
         if let Some(task) = parse_task_markdown(&content) {
             tasks.push(task);
         }
@@ -752,7 +752,7 @@ pub fn read_spaces() -> Result<Vec<serde_json::Value>, String> {
             continue;
         }
         let content = fs::read_to_string(&space_json)
-            .map_err(|e| format!("Failed to read {}: {}", space_json.display(), e))?;
+            .map_err(|e| { eprintln!("[vault] read error {}: {}", space_json.display(), e); "File read failed".to_string() })?;
         match serde_json::from_str::<serde_json::Value>(&content) {
             Ok(val) => spaces.push(val),
             Err(e) => eprintln!("Failed to parse {}: {}", space_json.display(), e),

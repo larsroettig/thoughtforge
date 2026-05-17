@@ -103,6 +103,8 @@ export function DashboardView() {
   const [activeFilter, setActiveFilter] = useState<FilterId>("my_todo");
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [showNewTask, setShowNewTask] = useState(false);
+  const [showAllTasks, setShowAllTasks] = useState(false);
+  const TASK_PAGE = 50;
   const handleTaskClick = useCallback((task: Task) => setEditingTask(task), []);
 
   const activeTasks = useMemo(
@@ -401,13 +403,23 @@ export function DashboardView() {
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-3 max-w-4xl">
-              {sortedTasks.map((task) => (
+              {(showAllTasks ? sortedTasks : sortedTasks.slice(0, TASK_PAGE)).map((task) => (
                 <TaskCard
                   key={task.id}
                   task={task}
                   onClick={handleTaskClick}
                 />
               ))}
+              {!showAllTasks && sortedTasks.length > TASK_PAGE && (
+                <div className="col-span-2 text-center pt-2">
+                  <button
+                    onClick={() => setShowAllTasks(true)}
+                    className="text-sm text-vault-text-muted hover:text-vault-text"
+                  >
+                    Show {sortedTasks.length - TASK_PAGE} more
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

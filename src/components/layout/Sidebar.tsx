@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, memo } from "react";
 import {
   LayoutDashboard,
   Gauge,
@@ -220,6 +220,24 @@ function SpaceItem({
   );
 }
 
+function formatElapsed(ms: number) {
+  const secs = Math.floor(ms / 1000);
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+const TimerDisplay = memo(function TimerDisplay({ startedAt }: { startedAt: number }) {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setElapsed(Date.now() - startedAt), 1000);
+    return () => clearInterval(id);
+  }, [startedAt]);
+  return <span className="text-sm font-mono text-vault-success font-bold">{formatElapsed(elapsed)}</span>;
+});
+
 export function Sidebar() {
   const {
     currentView,
@@ -287,18 +305,6 @@ export function Sidebar() {
     [orderedSpaces]
   );
 
-  const [elapsed, setElapsed] = useState(0);
-
-  useEffect(() => {
-    if (!activeTimer) {
-      setElapsed(0);
-      return;
-    }
-    const interval = setInterval(() => {
-      setElapsed(Date.now() - activeTimer.startedAt);
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [activeTimer]);
 
   const activeTasks = tasks.filter((t) => !t.archived);
   const archivedCount = tasks.filter((t) => t.archived).length;
@@ -326,15 +332,6 @@ export function Sidebar() {
   const timerTask = activeTimer
     ? tasks.find((t) => t.id === activeTimer.taskId)
     : null;
-
-  const formatElapsed = (ms: number) => {
-    const secs = Math.floor(ms / 1000);
-    const h = Math.floor(secs / 3600);
-    const m = Math.floor((secs % 3600) / 60);
-    const s = secs % 60;
-    if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-    return `${m}:${String(s).padStart(2, "0")}`;
-  };
 
   const handleStopTimer = async () => {
     const result = stopTimer();
@@ -370,9 +367,7 @@ export function Sidebar() {
             {timerTask.title}
           </p>
           <div className="flex items-center justify-between">
-            <span className="text-sm font-mono text-vault-success font-bold">
-              {formatElapsed(elapsed)}
-            </span>
+            <TimerDisplay startedAt={activeTimer!.startedAt} />
             <button
               onClick={handleStopTimer}
               className="flex items-center gap-1 text-[10px] text-vault-critical hover:bg-vault-critical/10 px-2 py-0.5 rounded"
@@ -427,6 +422,8 @@ export function Sidebar() {
         <div className="flex items-center gap-1.5 w-full py-2.5">
           <button
             onClick={() => setProjectsOpen(!projectsOpen)}
+            aria-label={projectsOpen ? "Collapse spaces" : "Expand spaces"}
+            aria-expanded={projectsOpen}
             className="flex items-center gap-1.5 flex-1 text-[10px] uppercase tracking-wider font-semibold text-vault-text-muted hover:text-vault-text"
           >
             {projectsOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
@@ -435,6 +432,7 @@ export function Sidebar() {
           </button>
           <button
             onClick={() => setShowCreateSpace(true)}
+            aria-label="New project space"
             className="p-0.5 hover:bg-vault-card rounded text-vault-text-muted hover:text-vault-accent"
           >
             <Plus className="w-3 h-3" />

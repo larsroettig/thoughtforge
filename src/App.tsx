@@ -32,13 +32,9 @@ function App() {
       try {
         await initVault();
         if (cancelled) return;
-        const config = await loadConfig();
+        const [config, , spaces] = await Promise.all([loadConfig(), loadTasks(), loadSpaces()]);
         if (cancelled) return;
-        await loadTasks();
-        if (cancelled) return;
-        const spaces = await loadSpaces();
-        if (cancelled) return;
-        await checkConnection();
+        void checkConnection();
 
         // Create "General" space if it doesn't exist
         const spaceIds = new Set(spaces.map((s: { id: string }) => s.id));
@@ -61,23 +57,18 @@ function App() {
         // Auto-create spaces from existing task projects
         const currentTasks = useAppStore.getState().tasks;
         const projectNames = [...new Set(currentTasks.map((t) => t.project).filter(Boolean))];
-        for (const projId of projectNames) {
-          if (cancelled) return;
-          if (spaceIds.has(projId)) continue;
-          const newSpace: ProjectSpace = {
-            id: projId,
-            name: projId.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-            description: "",
-            color: "",
-            created: new Date().toISOString().split("T")[0],
-            archived: false,
-            documents: [],
-            timeEntries: [],
-          };
-          useAppStore.getState().addProjectSpace(newSpace);
-          await saveSpace(newSpace);
-          spaceIds.add(projId);
-        }
+        const toCreate = projectNames.filter((id) => !spaceIds.has(id)).map((projId) => ({
+          id: projId,
+          name: projId.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+          description: "",
+          color: "",
+          created: new Date().toISOString().split("T")[0],
+          archived: false,
+          documents: [],
+          timeEntries: [],
+        } as ProjectSpace));
+        toCreate.forEach((s) => useAppStore.getState().addProjectSpace(s));
+        if (!cancelled) await Promise.all(toCreate.map((s) => saveSpace(s)));
 
         if (!cancelled && config && config.watched_folders.length > 0) {
           await startWatching(config.watched_folders);

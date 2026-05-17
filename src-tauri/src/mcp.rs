@@ -40,7 +40,8 @@ pub async fn start_mcp_server(
         .shell()
         .sidecar("vaultmind-mcp")
         .map_err(|e| e.to_string())?
-        .args(["--http", "--port", "7532", "--token", &config.mcp_token])
+        .args(["--http", "--port", "7532"])
+        .env("VAULTMIND_MCP_TOKEN", &config.mcp_token)
         .spawn()
         .map_err(|e| e.to_string())?;
     *guard = Some(child);
@@ -108,7 +109,8 @@ pub fn try_spawn_sidecar(app: &AppHandle, state: &McpServer) {
         .shell()
         .sidecar("vaultmind-mcp")
         .and_then(|cmd| {
-            cmd.args(["--http", "--port", "7532", "--token", &config.mcp_token])
+            cmd.args(["--http", "--port", "7532"])
+                .env("VAULTMIND_MCP_TOKEN", &config.mcp_token)
                 .spawn()
         }) {
         Ok((_, child)) => {

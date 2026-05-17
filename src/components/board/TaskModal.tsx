@@ -3,6 +3,7 @@ import { X, Trash2, Save, Sparkles } from "lucide-react";
 import type { Task, TaskStatus, TaskPriority, TaskUrgency } from "@/types";
 import { useVault } from "@/hooks/useVault";
 import { useAppStore } from "@/stores/appStore";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { OwnerSelect } from "./OwnerSelect";
 import { ProjectSelect } from "./ProjectSelect";
 
@@ -43,6 +44,13 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
   );
 
   const { saveTask, deleteTask } = useVault();
+  const trapRef = useFocusTrap<HTMLDivElement>();
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
 
   const update = (field: keyof Task, value: unknown) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -63,13 +71,19 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-vault-surface border border-vault-border rounded-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+      <div
+        ref={trapRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="task-modal-title"
+        className="bg-vault-surface border border-vault-border rounded-xl w-full max-w-2xl max-h-[90vh] flex flex-col"
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-vault-border flex-shrink-0">
-          <h3 className="text-lg font-bold text-vault-text-bright">
+          <h3 id="task-modal-title" className="text-lg font-bold text-vault-text-bright">
             {isNew ? "New Task" : "Edit Task"}
           </h3>
-          <button onClick={onClose} className="btn-ghost p-1">
+          <button onClick={onClose} aria-label="Close dialog" className="btn-ghost p-1">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -78,10 +92,11 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
         <div className="px-6 py-4 space-y-4 overflow-y-auto flex-1">
           {/* Title */}
           <div>
-            <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
+            <label htmlFor="task-title" className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
               Title
             </label>
             <input
+              id="task-title"
               type="text"
               value={form.title}
               onChange={(e) => update("title", e.target.value)}
@@ -94,10 +109,11 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
           {/* Row: Status, Priority, Urgency */}
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
+              <label htmlFor="task-status" className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
                 Status
               </label>
               <select
+                id="task-status"
                 value={form.status}
                 onChange={(e) => update("status", e.target.value)}
                 className="input-base w-full"
@@ -111,10 +127,11 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
             </div>
 
             <div>
-              <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
+              <label htmlFor="task-priority" className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
                 Priority
               </label>
               <select
+                id="task-priority"
                 value={form.priority}
                 onChange={(e) => update("priority", e.target.value)}
                 className="input-base w-full"
@@ -127,10 +144,11 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
             </div>
 
             <div>
-              <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
+              <label htmlFor="task-urgency" className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
                 Urgency
               </label>
               <select
+                id="task-urgency"
                 value={form.urgency}
                 onChange={(e) => update("urgency", e.target.value)}
                 className="input-base w-full"
@@ -167,10 +185,11 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
             </div>
 
             <div>
-              <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
+              <label htmlFor="task-due" className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
                 Due Date
               </label>
               <input
+                id="task-due"
                 type="date"
                 value={form.due}
                 onChange={(e) => update("due", e.target.value)}
@@ -182,10 +201,11 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
           {/* Hours */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
+              <label htmlFor="task-est-hours" className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
                 Estimated Hours
               </label>
               <input
+                id="task-est-hours"
                 type="number"
                 min="0"
                 step="0.5"
@@ -195,10 +215,11 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
+              <label htmlFor="task-actual-hours" className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
                 Actual Hours
               </label>
               <input
+                id="task-actual-hours"
                 type="number"
                 min="0"
                 step="0.5"
@@ -242,10 +263,11 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
 
           {/* Notes */}
           <div>
-            <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
+            <label htmlFor="task-notes" className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
               Notes
             </label>
             <textarea
+              id="task-notes"
               value={form.notes}
               onChange={(e) => update("notes", e.target.value)}
               placeholder="Additional notes..."

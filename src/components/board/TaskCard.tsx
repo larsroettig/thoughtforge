@@ -175,7 +175,10 @@ export const TaskCard = memo(function TaskCard({ task, onClick, draggable: isDra
             setShowDatePicker(false);
             setShowAssign(false);
           }}
-          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-vault-border/50"
+          aria-label="Task options"
+          aria-haspopup="true"
+          aria-expanded={showMenu}
+          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity p-1 rounded hover:bg-vault-border/50"
           style={isTimerRunning ? { right: "3rem" } : undefined}
         >
           <MoreHorizontal className="w-3.5 h-3.5 text-vault-text-muted" />

@@ -1,0 +1,60 @@
+name: Feature Request
+description: Suggest an improvement or new feature
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before requesting a feature, check that it fits ThoughtForge's [local-first, privacy-first design](https://larsroettig.github.io/thoughtforge/). Features that require sending data to external servers will not be accepted.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the workflow or pain point this would address.
+      placeholder: "When I'm planning my week, I have to..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How would you like this to work?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've considered
+      description: Other approaches you've thought about, and why they fall short.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which area does this affect?
+      multiple: true
+      options:
+        - Dashboard
+        - Kanban Board
+        - Project Spaces
+        - Notes / Meetings
+        - AI Chat
+        - Document Processing
+        - Semantic Search
+        - Goals
+        - Time Tracking
+        - MCP Server
+        - Settings
+        - Other
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: This feature keeps all data local (no external API calls)
+          required: true
+        - label: I searched existing issues and this hasn't been requested before
+          required: true

@@ -1,6 +1,9 @@
+import { useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import type { Task } from "@/types";
 import { TaskCard } from "./TaskCard";
+
+const VISIBLE = 25;
 
 interface BoardColumnProps {
   id: string;
@@ -12,6 +15,9 @@ interface BoardColumnProps {
 
 export function BoardColumn({ id, title, color, tasks, onTaskClick }: BoardColumnProps) {
   const { isOver, setNodeRef } = useDroppable({ id });
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? tasks : tasks.slice(0, VISIBLE);
+  const hidden = tasks.length - VISIBLE;
 
   return (
     <div
@@ -33,9 +39,18 @@ export function BoardColumn({ id, title, color, tasks, onTaskClick }: BoardColum
 
       {/* Cards */}
       <div className="flex-1 overflow-y-auto space-y-2.5 min-h-0">
-        {tasks.map((task) => (
+        {visible.map((task) => (
           <TaskCard key={task.id} task={task} onClick={onTaskClick} draggable />
         ))}
+
+        {!expanded && hidden > 0 && (
+          <button
+            onClick={() => setExpanded(true)}
+            className="w-full text-xs text-vault-text-muted hover:text-vault-text py-1"
+          >
+            Show {hidden} more
+          </button>
+        )}
 
         {tasks.length === 0 && (
           <div className="flex flex-col items-center justify-center py-10 gap-2 text-vault-text-muted/40">

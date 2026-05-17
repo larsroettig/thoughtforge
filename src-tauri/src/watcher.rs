@@ -103,7 +103,7 @@ pub fn start_watching(app: AppHandle, paths: Vec<String>) -> Result<(), String> 
         }
         boxed
             .watch(path, RecursiveMode::Recursive)
-            .map_err(|e| format!("Failed to watch {}: {}", path_str, e))?;
+            .map_err(|e| { eprintln!("[watcher] watch error {}: {}", path_str, e); "Failed to start file watcher".to_string() })?;
     }
 
     let mut guard = lock_or_recover(&state.0);

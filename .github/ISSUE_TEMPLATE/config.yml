@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/larsroettig/thoughtforge/security/advisories/new
+    about: Report a security vulnerability privately — do not open a public issue.
+  - name: User Guide
+    url: https://larsroettig.github.io/thoughtforge/user-guide
+    about: Check the user guide before opening a bug — it may already be documented.
+  - name: MCP Docs
+    url: https://larsroettig.github.io/thoughtforge/mcp
+    about: MCP server setup and tool reference.
