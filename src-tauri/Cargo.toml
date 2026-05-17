@@ -42,7 +42,7 @@ clap = { version = "4.6.1", features = ["derive"] }
 axum = { version = "0.8.9", features = ["tokio"] }
 turbovec = "0.2"
 blas-src = { version = "0.10", features = ["accelerate"] }
-sha2 = "0.10"
+sha2 = "0.11"
 hex = "0.4"
 
 [profile.release]
