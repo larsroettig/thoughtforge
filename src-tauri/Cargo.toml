@@ -41,7 +41,7 @@ rmcp = { version = "1.7.0", features = ["server", "macros", "transport-io", "tra
 clap = { version = "4.6.1", features = ["derive"] }
 axum = { version = "0.8.9", features = ["tokio"] }
 turbovec = "0.2"
-blas-src = { version = "0.10", features = ["accelerate"] }
+blas-src = { version = "0.14", features = ["accelerate"] }
 sha2 = "0.11"
 hex = "0.4"
 
