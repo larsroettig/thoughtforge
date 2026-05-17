@@ -178,7 +178,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       ),
     })),
   createChatSession: (title) => {
-    const id = `chat_${Date.now()}`;
+    const id = `chat_${crypto.randomUUID()}`;
     const session: ChatSession = {
       id,
       title,

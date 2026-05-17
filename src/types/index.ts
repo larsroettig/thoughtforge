@@ -174,7 +174,7 @@ export interface NoteSearchResult {
 
 export type AppView = "dashboard" | "board" | "matrix" | "goals" | "chat" | "documents" | "settings" | "archive" | "project-space" | "stats";
 
-export type ProjectSpaceTab = "overview" | "documents" | "notes" | "meetings" | "tasks" | "knowledge";
+export type ProjectSpaceTab = "overview" | "documents" | "notes" | "meetings" | "tasks" | "knowledge" | "chat";
 
 export const URGENCY_COLUMNS: BoardColumn[] = [
   { id: "critical", title: "Critical / Blockers", color: "#f85149", taskIds: [] },

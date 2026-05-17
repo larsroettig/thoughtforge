@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useAppStore } from "@/stores/appStore";
-import type { ChatMessage, Task } from "@/types";
+import type { ChatMessage, Task, SpaceNote } from "@/types";
 import { getNonWorkingDays, isWorkingDay } from "@/lib/holidays";
 
 const EXTRACTION_SYSTEM_PROMPT = `You are an expert at extracting action items from meeting transcripts.
@@ -23,24 +23,35 @@ Respond ONLY with a valid JSON array of objects. No markdown, no explanation.
 Example:
 [{"title":"Review quarterly report","owner":"Alice","priority":"high","urgency":"this_week","project":"marketing","due":"2026-05-14","source_quote":"I will send the report today","subtasks":[]}]`;
 
-const PLANNING_SYSTEM_PROMPT = `You are ThoughtForge, a task planning assistant. You can read and modify the user's task board.
+const PLANNING_SYSTEM_PROMPT = `You are ThoughtForge, a task planning assistant. You can see the user's task board.
 
-## Actions (put AFTER your text, one per line)
-Modify: [[ACTION: set_due | title_substring | YYYY-MM-DD]]
-         [[ACTION: set_priority | title_substring | critical/high/medium/low]]
-         [[ACTION: set_status | title_substring | todo/in_progress/review/done/blocked]]
-         [[ACTION: set_owner | title_substring | Name]]
-         [[ACTION: archive | title_substring]]
-Clear date: [[ACTION: set_due | title_substring | ]]
-Create: [[ACTION: create_task | Title | project_id | priority | owner]]
+Answer questions about tasks, plan the day/week, identify blockers, and suggest modifications.
+When suggesting task changes (reschedule, reprioritize, reassign, archive, create), describe them clearly.
+Be concise. Use bullet points.
 
-## Rules
-- NEVER create a task if one with a similar title already exists. Modify the existing one instead.
+Rules:
+- NEVER create a task if one with a similar title already exists — suggest modifying it instead.
 - NEVER schedule on weekends or holidays (listed in context).
-- Max 4 tasks per day. If overloaded, clear dates of low-priority tasks.
-- Only create tasks when the user EXPLICITLY asks. Planning = rearranging existing tasks.
-- Use enough of the title to uniquely match. Check the task list before acting.
-- Be concise. Bullet points.`;
+- Max 4 tasks per day. If overloaded, suggest clearing dates of low-priority tasks.
+- Only create tasks when the user EXPLICITLY asks.`;
+
+const ACTION_EXTRACTION_PROMPT = `You are a task action extractor. Given an assistant response about task management, extract any task modifications being suggested.
+
+Return ONLY a valid JSON array. Return [] if no modifications are suggested.
+
+Action formats:
+{"type":"set_due","titleMatch":"partial task title","value":"YYYY-MM-DD"}
+{"type":"set_priority","titleMatch":"...","value":"critical|high|medium|low"}
+{"type":"set_status","titleMatch":"...","value":"todo|in_progress|review|done|blocked"}
+{"type":"set_owner","titleMatch":"...","value":"Name"}
+{"type":"archive","titleMatch":"...","value":""}
+{"type":"create_task","titleMatch":"title","value":"title","project":"project_id","priority":"medium","owner":""}
+
+Rules:
+- titleMatch must be a substring that uniquely identifies the task
+- Only extract modifications the assistant is explicitly suggesting
+- Return [] for purely informational responses
+- Respond with ONLY the JSON array, no explanation`;
 
 export interface TaskAction {
   type: "set_due" | "set_priority" | "set_status" | "set_owner" | "archive" | "create_task";
@@ -259,20 +270,15 @@ export function useLlm() {
       messages: ChatMessage[],
       onChunk: (text: string) => void,
       onDone: () => void
-    ): Promise<void> => {
+    ): Promise<() => void> => {
       const streamId = crypto.randomUUID();
 
       const unlisten1 = await listen<string>(
         `stream-chunk-${streamId}`,
-        (event) => {
-          onChunk(event.payload);
-        }
+        (event) => { onChunk(event.payload); }
       );
 
-      const cleanup = () => {
-        unlisten1();
-        unlisten2();
-      };
+      const cleanup = () => { unlisten1(); unlisten2(); };
 
       const unlisten2 = await listen(`stream-done-${streamId}`, () => {
         onDone();
@@ -292,6 +298,8 @@ export function useLlm() {
         cleanup();
         throw err;
       }
+
+      return cleanup;
     },
     [config.lm_studio_url, config.active_model]
   );
@@ -443,28 +451,121 @@ Tasks (top ${relevantTasks.length} of ${openTasks.length}):
 ${taskLines || "(none)"}`;
   }, [tasks, config.country]);
 
+  const extractActionsFromText = useCallback(
+    async (text: string): Promise<TaskAction[]> => {
+      if (!text.trim()) return [];
+      try {
+        const response = await chatCompletion([
+          { role: "system", content: ACTION_EXTRACTION_PROMPT },
+          { role: "assistant", content: text },
+          { role: "user", content: "Extract task actions as a JSON array." },
+        ]);
+        let jsonStr = response.trim();
+        if (jsonStr.startsWith("```")) {
+          jsonStr = jsonStr.replace(/^```json?\n?/, "").replace(/\n?```$/, "");
+        }
+        const parsed = JSON.parse(jsonStr);
+        if (!Array.isArray(parsed)) return [];
+        return parsed.filter(
+          (a): a is TaskAction =>
+            typeof a === "object" && typeof a.type === "string" && typeof a.titleMatch === "string"
+        );
+      } catch {
+        return [];
+      }
+    },
+    [chatCompletion]
+  );
+
   const planningChat = useCallback(
     async (
       userMessage: string,
       history: ChatMessage[],
       onChunk: (text: string) => void,
-      onDone: () => void
-    ) => {
+      onDone: () => void,
+      onActions: (actions: TaskAction[]) => void
+    ): Promise<() => void> => {
       const contextPrompt = buildContextPrompt();
-      const systemMessage: ChatMessage = {
-        role: "system",
-        content: `${PLANNING_SYSTEM_PROMPT}\n\n${contextPrompt}`,
-      };
-
       const messages: ChatMessage[] = [
-        systemMessage,
+        { role: "system", content: `${PLANNING_SYSTEM_PROMPT}\n\n${contextPrompt}` },
         ...history,
         { role: "user", content: userMessage },
       ];
 
-      await streamChat(messages, onChunk, onDone);
+      let streamedText = "";
+      let cancelled = false;
+      const cleanup = await streamChat(
+        messages,
+        (chunk) => { streamedText += chunk; onChunk(chunk); },
+        () => {
+          onDone(); // immediately unblock UI
+          void (async () => {
+            if (cancelled) return;
+            const actions = await extractActionsFromText(streamedText);
+            if (!cancelled) onActions(actions);
+          })();
+        }
+      );
+      return () => { cancelled = true; cleanup(); };
     },
-    [buildContextPrompt, streamChat]
+    [buildContextPrompt, streamChat, extractActionsFromText]
+  );
+
+  const spacePlanningChat = useCallback(
+    async (
+      userMessage: string,
+      history: ChatMessage[],
+      spaceName: string,
+      notes: SpaceNote[],
+      spaceTasks: Task[],
+      onChunk: (text: string) => void,
+      onDone: () => void,
+      onActions: (actions: TaskAction[]) => void
+    ): Promise<() => void> => {
+      const taskLines = spaceTasks
+        .map((t) => `- "${t.title}" [${t.status}] ${t.priority}${t.due ? ` due:${t.due}` : ""}`)
+        .join("\n");
+
+      const noteLines = notes
+        .map((n) => `[${n.date}] ${n.type}: ${n.title}\n${n.content.slice(0, 300)}`)
+        .join("\n---\n");
+
+      const contextPrompt = `Space: ${spaceName}
+
+TASKS (${spaceTasks.length}):
+${taskLines || "(none)"}
+
+NOTES (${notes.length}):
+${noteLines || "(none)"}`;
+
+      const systemPrompt = `You are an AI assistant for the project space "${spaceName}".
+Answer questions based on the provided notes, meetings, and tasks.
+When suggesting task changes, describe them clearly in your response.
+Keep answers concise and grounded in the actual data shown.`;
+
+      const messages: ChatMessage[] = [
+        { role: "system", content: `${systemPrompt}\n\n${contextPrompt}` },
+        ...history,
+        { role: "user", content: userMessage },
+      ];
+
+      let streamedText = "";
+      let cancelled = false;
+      const cleanup = await streamChat(
+        messages,
+        (chunk) => { streamedText += chunk; onChunk(chunk); },
+        () => {
+          onDone(); // immediately unblock UI
+          void (async () => {
+            if (cancelled) return;
+            const actions = await extractActionsFromText(streamedText);
+            if (!cancelled) onActions(actions);
+          })();
+        }
+      );
+      return () => { cancelled = true; cleanup(); };
+    },
+    [streamChat, extractActionsFromText]
   );
 
   return {
@@ -473,6 +574,7 @@ ${taskLines || "(none)"}`;
     streamChat,
     extractTasksFromText,
     planningChat,
+    spacePlanningChat,
     isProcessing,
   };
 }

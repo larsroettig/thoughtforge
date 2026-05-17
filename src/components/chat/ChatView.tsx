@@ -11,7 +11,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useAppStore } from "@/stores/appStore";
-import { useLlm, parseActions, findTaskByTitle, type TaskAction } from "@/hooks/useLlm";
+import { useLlm, findTaskByTitle, type TaskAction } from "@/hooks/useLlm";
 import { useVault } from "@/hooks/useVault";
 import type { ChatMessage, Task } from "@/types";
 
@@ -66,6 +66,10 @@ export function ChatView() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const cancelStreamRef = useRef<(() => void) | null>(null);
+
+  // Cancel any in-flight stream on unmount
+  useEffect(() => () => { cancelStreamRef.current?.(); }, []);
 
   const activeSession = chatSessions.find((s) => s.id === activeChatId);
 
@@ -77,52 +81,32 @@ export function ChatView() {
     scrollToBottom();
   }, [activeSession?.messages, streamingContent, pendingActions, actionResults, scrollToBottom]);
 
-  // Resolve actions from LLM text (but don't apply -- just prepare for confirmation)
+  // Map extracted TaskAction[] → PendingAction[] with task lookups and labels
   const resolveActions = useCallback(
-    (fullText: string): PendingAction[] => {
-      const { actions } = parseActions(fullText);
-      if (actions.length === 0) return [];
-
-      const ALLOWED_ACTION_TYPES = new Set([
-        "create_task", "set_due", "set_priority", "set_status", "set_owner", "archive",
-      ]);
-
+    (actions: TaskAction[]): PendingAction[] => {
+      const ALLOWED = new Set(["create_task", "set_due", "set_priority", "set_status", "set_owner", "archive"]);
       const currentTasks = useAppStore.getState().tasks;
 
       return actions
-        .filter((action) => ALLOWED_ACTION_TYPES.has(action.type))
+        .filter((a) => ALLOWED.has(a.type))
         .map((action) => {
-        if (action.type === "create_task") {
-          // Check for duplicates
-          const existing = findTaskByTitle(currentTasks, action.titleMatch);
-          if (existing && !existing.archived) {
-            return {
-              action,
-              task: existing,
-              label: `DUPLICATE: "${action.titleMatch}" already exists as "${existing.title}" -- will skip`,
-            };
+          if (action.type === "create_task") {
+            const existing = findTaskByTitle(currentTasks, action.titleMatch);
+            if (existing && !existing.archived) {
+              return { action, task: existing, label: `DUPLICATE: "${action.titleMatch}" already exists as "${existing.title}" — will skip` };
+            }
+            return { action, task: null, label: `Create task: "${action.titleMatch}" (${action.project || "general"}, ${action.priority || "medium"})` };
           }
+          const task = findTaskByTitle(currentTasks, action.titleMatch);
+          const labels: Record<string, string> = { set_due: "Set due date", set_priority: "Set priority", set_status: "Set status", set_owner: "Assign to", archive: "Archive" };
           return {
             action,
-            task: null, // null means "will create new"
-            label: `Create task: "${action.titleMatch}" (${action.project || "general"}, ${action.priority || "medium"})`,
+            task,
+            label: task
+              ? `${labels[action.type] || action.type}: "${task.title}" → ${action.value || "archived"}`
+              : `${labels[action.type] || action.type}: "${action.titleMatch}" (not found)`,
           };
-        }
-
-        const task = findTaskByTitle(currentTasks, action.titleMatch);
-        const typeLabels: Record<string, string> = {
-          set_due: "Set due date",
-          set_priority: "Set priority",
-          set_status: "Set status",
-          set_owner: "Assign to",
-          archive: "Archive",
-        };
-        const label = task
-          ? `${typeLabels[action.type] || action.type}: "${task.title}" -> ${action.value || "archived"}`
-          : `${typeLabels[action.type] || action.type}: "${action.titleMatch}" (not found)`;
-
-        return { action, task, label };
-      });
+        });
     },
     []
   );
@@ -247,104 +231,62 @@ export function ChatView() {
     }
   }, [activeChatId, addChatMessage]);
 
-  // Common handler for finishing a streamed response
+  // Called immediately when stream ends — unblocks UI
   const handleStreamDone = useCallback(
-    (sessionId: string, accumulated: string) => {
-      const { cleanText, actions } = parseActions(accumulated);
-
-      // Store clean text as the message (without action blocks)
-      addChatMessage(sessionId, {
-        role: "assistant",
-        content: cleanText,
-      });
+    (sessionId: string, text: string) => {
+      addChatMessage(sessionId, { role: "assistant", content: text });
       setStreamingContent("");
       setIsStreaming(false);
-
-      // If actions found, queue for confirmation
-      if (actions.length > 0) {
-        const resolved = resolveActions(accumulated);
-        setPendingActions(resolved);
-      }
     },
-    [addChatMessage, resolveActions]
+    [addChatMessage]
   );
 
-  const handleSend = useCallback(async () => {
-    const text = input.trim();
+  const sendMessage = useCallback(async (text: string) => {
     if (!text || isStreaming || !llmConnected) return;
 
+    cancelStreamRef.current?.();
+
     let sessionId = activeChatId;
     if (!sessionId) {
-      const title = text.slice(0, 50) + (text.length > 50 ? "..." : "");
-      sessionId = createChatSession(title);
+      sessionId = createChatSession(text.slice(0, 50) + (text.length > 50 ? "..." : ""));
     }
 
     addChatMessage(sessionId, { role: "user", content: text });
+    setIsStreaming(true);
+    setStreamingContent("");
+    setPendingActions([]);
+    setActionResults([]);
+
+    const session = useAppStore.getState().chatSessions.find((s) => s.id === sessionId);
+    const history = (session?.messages || []).filter((m) => m.role !== "system");
+
+    let accumulated = "";
+    try {
+      const cancel = await planningChat(
+        text,
+        history.slice(0, -1),
+        (chunk) => { accumulated += chunk; setStreamingContent(accumulated); },
+        () => handleStreamDone(sessionId!, accumulated),
+        (actions) => { if (actions.length > 0) setPendingActions(resolveActions(actions)); }
+      );
+      cancelStreamRef.current = cancel;
+    } catch (err) {
+      addChatMessage(sessionId, { role: "assistant", content: `Error: ${err}` });
+      setIsStreaming(false);
+      setStreamingContent("");
+    }
+  }, [isStreaming, activeChatId, llmConnected, createChatSession, addChatMessage, planningChat, handleStreamDone, resolveActions]);
+
+  const handleSend = useCallback(() => {
+    const text = input.trim();
+    if (!text) return;
     setInput("");
-    setIsStreaming(true);
-    setStreamingContent("");
-    setPendingActions([]);
-    setActionResults([]);
+    void sendMessage(text);
+  }, [input, sendMessage]);
 
-    const session = useAppStore.getState().chatSessions.find((s) => s.id === sessionId);
-    const history = (session?.messages || []).filter((m) => m.role !== "system");
-
-    try {
-      let accumulated = "";
-      await planningChat(
-        text,
-        history.slice(0, -1),
-        (chunk) => {
-          accumulated += chunk;
-          // Show streaming text without action blocks
-          const { cleanText } = parseActions(accumulated);
-          setStreamingContent(cleanText);
-        },
-        () => handleStreamDone(sessionId!, accumulated)
-      );
-    } catch (err) {
-      addChatMessage(sessionId, { role: "assistant", content: `Error: ${err}` });
-      setIsStreaming(false);
-      setStreamingContent("");
-    }
-  }, [input, isStreaming, activeChatId, llmConnected, createChatSession, addChatMessage, planningChat, handleStreamDone]);
-
-  const handleQuickSend = useCallback(async (text: string) => {
-    if (isStreaming || !llmConnected) return;
-
-    let sessionId = activeChatId;
-    if (!sessionId) {
-      const title = text.slice(0, 50);
-      sessionId = createChatSession(title);
-    }
-
-    addChatMessage(sessionId, { role: "user", content: text });
-    setIsStreaming(true);
-    setStreamingContent("");
-    setPendingActions([]);
-    setActionResults([]);
-
-    const session = useAppStore.getState().chatSessions.find((s) => s.id === sessionId);
-    const history = (session?.messages || []).filter((m) => m.role !== "system");
-
-    try {
-      let accumulated = "";
-      await planningChat(
-        text,
-        history.slice(0, -1),
-        (chunk) => {
-          accumulated += chunk;
-          const { cleanText } = parseActions(accumulated);
-          setStreamingContent(cleanText);
-        },
-        () => handleStreamDone(sessionId!, accumulated)
-      );
-    } catch (err) {
-      addChatMessage(sessionId, { role: "assistant", content: `Error: ${err}` });
-      setIsStreaming(false);
-      setStreamingContent("");
-    }
-  }, [isStreaming, activeChatId, llmConnected, createChatSession, addChatMessage, planningChat, handleStreamDone]);
+  const handleQuickSend = useCallback((text: string) => {
+    void sendMessage(text);
+  }, [sendMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {

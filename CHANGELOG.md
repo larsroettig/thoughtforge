@@ -2,6 +2,27 @@
 
 All notable changes to ThoughtForge are documented here.
 
+## [1.3.0-beta.1] — 2026-05-17
+
+### Added
+- **Space Chat** — each project space now has a Chat tab; ask questions about that space's notes and tasks with full context scoped to the space
+- **Auto-index on save** — embedding index rebuilds automatically 5s after a note is saved; no manual "Index Notes" click needed for routine updates
+- **Tags editing in note editor** — add/remove tags inline in the toolbar; press Enter or comma to add
+- **Date editing in note editor** — date field is now a native date picker instead of read-only text
+- **Two-phase action extraction** — LLM chat responses stream prose immediately; task actions are extracted in a separate focused call after streaming, improving reliability across models
+
+### Fixed
+- **Notes tab badge** now counts only non-meeting notes; Meetings tab shows its own count
+- **Shared note/meeting search** — single filter input covers both Notes and Meetings tabs simultaneously
+- **Stream listener leak** — Tauri event listeners are now cleaned up on component unmount; no longer accumulate across chat turns
+- **Stale note flush** — tab-switch save now reads live note/space refs instead of stale closure values; no more silent data loss on rapid tab switching
+- **Spinner unblocks immediately** after streaming ends; action cards appear asynchronously after extraction
+- **`Date.now()` IDs replaced** with `crypto.randomUUID()` in chat session creation
+- **Effect dependency arrays** corrected in space view (semantic search, index status, space load); all `eslint-disable` suppression comments removed
+- **`handleSend`/`handleQuickSend` deduplicated** — shared `sendMessage` helper eliminates ~40 lines of duplicate streaming logic
+
+---
+
 ## [1.2.1] — 2026-05-17
 
 ### Fixed

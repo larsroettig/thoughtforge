@@ -25,6 +25,8 @@ import {
   PenLine,
   ListPlus,
   Search,
+  Tag,
+  MessageSquare,
 } from "lucide-react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
@@ -37,6 +39,7 @@ import type { ProjectSpaceTab, SpaceNote, Task, StatusColors, TimeEntry, NoteSea
 import { PROJECT_COLORS, DEFAULT_STATUS_COLORS } from "@/types";
 import { TaskCard } from "@/components/board/TaskCard";
 import { TaskModal } from "@/components/board/TaskModal";
+import { SpaceChat } from "@/components/spaces/SpaceChat";
 
 const TABS: { id: ProjectSpaceTab; label: string; icon: typeof LayoutGrid }[] = [
   { id: "overview", label: "Dashboard", icon: LayoutGrid },
@@ -44,6 +47,7 @@ const TABS: { id: ProjectSpaceTab; label: string; icon: typeof LayoutGrid }[] = 
   { id: "meetings", label: "Meetings", icon: Users },
   { id: "documents", label: "Documents", icon: FileText },
   { id: "tasks", label: "Tasks", icon: ListChecks },
+  { id: "chat", label: "Chat", icon: MessageSquare },
   { id: "knowledge", label: "AI Context", icon: Sparkles },
 ];
 
@@ -85,7 +89,11 @@ export function ProjectSpaceView() {
   const [bookDesc, setBookDesc] = useState("");
   const [previewMode, setPreviewMode] = useState(false);
   const [showCreateTask, setShowCreateTask] = useState(false);
+  const [tagInput, setTagInput] = useState("");
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const indexTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const editingNoteRef = useRef<SpaceNote | null>(null);
+  const spaceRef = useRef<typeof space | undefined>(undefined);
 
   const [noteFilter, setNoteFilter] = useState("");
 
@@ -100,6 +108,10 @@ export function ProjectSpaceView() {
   const space = projectSpaces.find((s) => s.id === activeSpaceId);
   const sc: StatusColors = { ...DEFAULT_STATUS_COLORS, ...(config.status_colors || {}) };
 
+  // Keep refs in sync so cleanup effects always see the latest values
+  useEffect(() => { editingNoteRef.current = editingNote; }, [editingNote]);
+  useEffect(() => { spaceRef.current = space; }, [space]);
+
   // Notes loaded per-space from disk
   const notes: SpaceNote[] = activeSpaceId ? (spaceNotes[activeSpaceId] || []) : [];
 
@@ -110,14 +122,14 @@ export function ProjectSpaceView() {
       setActiveTab("overview");
       setNoteFilter("");
     }
-  }, [activeSpaceId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeSpaceId, loadSpaceNotes]);
 
   // Load index status when knowledge tab opens
   useEffect(() => {
     if (activeTab === "knowledge" && activeSpaceId) {
       spaceIndexStatus(activeSpaceId).then(setIndexStatus).catch(() => {});
     }
-  }, [activeTab, activeSpaceId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeTab, activeSpaceId, spaceIndexStatus]);
 
   // Debounced semantic search
   useEffect(() => {
@@ -139,7 +151,7 @@ export function ProjectSpaceView() {
       }
     }, 400);
     return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
-  }, [searchQuery, activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [searchQuery, activeTab, activeSpaceId, searchSpaceNotes]);
 
   const handleIndexNotes = useCallback(async () => {
     if (!activeSpaceId) return;
@@ -225,30 +237,42 @@ export function ProjectSpaceView() {
         await saveSpaceNote(space.id, updatedNote);
         setSaveStatus("saved");
         setTimeout(() => setSaveStatus("idle"), 1500);
+
+        // Auto-index: fire 5s after last save, non-blocking
+        if (indexTimer.current) clearTimeout(indexTimer.current);
+        indexTimer.current = setTimeout(async () => {
+          try {
+            await indexSpaceNotes(space.id);
+            const status = await spaceIndexStatus(space.id);
+            setIndexStatus(status);
+          } catch {
+            // non-blocking — index failures don't surface to the user
+          }
+        }, 5000);
       }, 3000);
     },
-    [space, upsertSpaceNote, saveSpaceNote]
+    [space, upsertSpaceNote, saveSpaceNote, indexSpaceNotes, spaceIndexStatus]
   );
 
-  // Clean up timer on unmount
+  // Clean up timers on unmount
   useEffect(() => {
     return () => {
       if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+      if (indexTimer.current) clearTimeout(indexTimer.current);
     };
   }, []);
 
-  // Flush pending note save on tab switch or leaving the space
+  // Flush pending note save on tab switch — reads live values via refs to avoid stale closure
   useEffect(() => {
     return () => {
       if (autoSaveTimer.current) {
         clearTimeout(autoSaveTimer.current);
-        const currentNote = editingNote;
-        if (currentNote && space) {
-          saveSpaceNote(space.id, currentNote);
-        }
+        const note = editingNoteRef.current;
+        const sp = spaceRef.current;
+        if (note && sp) saveSpaceNote(sp.id, note);
       }
     };
-  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeTab, saveSpaceNote]);
 
   const handleCreateNote = useCallback(async (type: "daily" | "meeting" | "note") => {
     if (!space) return;
@@ -445,8 +469,11 @@ export function ProjectSpaceView() {
               >
                 <Icon className="w-3.5 h-3.5" />
                 {tab.label}
-                {tab.id === "notes" && allNotes.length > 0 && (
-                  <span className="text-[9px] bg-vault-border rounded-full px-1">{allNotes.length}</span>
+                {tab.id === "notes" && allNotes.filter((n) => n.type !== "meeting").length > 0 && (
+                  <span className="text-[9px] bg-vault-border rounded-full px-1">{allNotes.filter((n) => n.type !== "meeting").length}</span>
+                )}
+                {tab.id === "meetings" && meetingNotes.length > 0 && (
+                  <span className="text-[9px] bg-vault-border rounded-full px-1">{meetingNotes.length}</span>
                 )}
               </button>
             );
@@ -825,7 +852,12 @@ export function ProjectSpaceView() {
                   {/* Toolbar Row */}
                   <div className="flex items-center gap-2 mb-2">
                     <Clock className="w-3 h-3 text-vault-text-muted" />
-                    <span className="text-xs text-vault-text-muted">{editingNote.date}</span>
+                    <input
+                      type="date"
+                      value={editingNote.date}
+                      onChange={(e) => handleNoteChange({ ...editingNote, date: e.target.value })}
+                      className="text-xs text-vault-text-muted bg-transparent border-none outline-none cursor-pointer"
+                    />
                     <span className="tag bg-vault-card border border-vault-border text-[10px]">{editingNote.type}</span>
 
                     <div className="ml-auto flex items-center gap-1">
@@ -861,6 +893,39 @@ export function ProjectSpaceView() {
                         </button>
                       </div>
                     </div>
+                  </div>
+
+                  {/* Tags Row */}
+                  <div className="flex items-center gap-1.5 flex-wrap mb-2">
+                    <Tag className="w-3 h-3 text-vault-text-muted flex-shrink-0" />
+                    {editingNote.tags.map((tag) => (
+                      <span key={tag} className="flex items-center gap-0.5 tag bg-vault-card border border-vault-border text-[10px]">
+                        {tag}
+                        <button
+                          onClick={() => handleNoteChange({ ...editingNote, tags: editingNote.tags.filter((t) => t !== tag) })}
+                          className="ml-0.5 hover:text-vault-critical"
+                        >
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                      </span>
+                    ))}
+                    <input
+                      type="text"
+                      value={tagInput}
+                      onChange={(e) => setTagInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if ((e.key === "Enter" || e.key === ",") && tagInput.trim()) {
+                          e.preventDefault();
+                          const t = tagInput.trim().replace(/,$/, "");
+                          if (t && !editingNote.tags.includes(t)) {
+                            handleNoteChange({ ...editingNote, tags: [...editingNote.tags, t] });
+                          }
+                          setTagInput("");
+                        }
+                      }}
+                      placeholder="Add tag…"
+                      className="text-[10px] bg-transparent border-none outline-none text-vault-text-muted placeholder:text-vault-text-muted/50 w-20"
+                    />
                   </div>
 
                   {/* Editor or Preview */}
@@ -1080,6 +1145,17 @@ export function ProjectSpaceView() {
               </div>
             )}
           </div>
+          </div>
+        )}
+        {/* ── SPACE CHAT ── */}
+        {activeTab === "chat" && space && (
+          <div className="flex-1 overflow-hidden flex flex-col">
+            <SpaceChat
+              spaceId={space.id}
+              spaceName={space.name}
+              notes={notes}
+              tasks={projectTasks}
+            />
           </div>
         )}
       </div>
