@@ -1,5 +1,7 @@
 # ThoughtForge
 
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/larsroettig/thoughtforge/badge)](https://scorecard.dev/viewer/?uri=github.com/larsroettig/thoughtforge)
+
 <img width="1774" height="887" alt="image" src="https://github.com/user-attachments/assets/7ef1efc4-a8de-4be5-9f0d-b2f6fd3e18fd" />
 
 A local-first AI planning assistant. Extracts action items from meeting transcripts, manages tasks on a kanban board, and uses a local LLM (via LM Studio) for smart planning — all without sending data to the cloud.
