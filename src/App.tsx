@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { Routes, Route, Navigate } from "react-router-dom";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { StatusBar } from "@/components/layout/StatusBar";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -8,20 +8,26 @@ import { useVault } from "@/hooks/useVault";
 import type { ProjectSpace } from "@/types";
 import { useLlm } from "@/hooks/useLlm";
 
-const DashboardView   = lazy(() => import("@/components/board/DashboardView").then((m) => ({ default: m.DashboardView })));
-const KanbanBoard     = lazy(() => import("@/components/board/KanbanBoard").then((m) => ({ default: m.KanbanBoard })));
-const ArchiveView     = lazy(() => import("@/components/board/ArchiveView").then((m) => ({ default: m.ArchiveView })));
-const StatsView       = lazy(() => import("@/components/board/StatsView").then((m) => ({ default: m.StatsView })));
+const DashboardView    = lazy(() => import("@/components/board/DashboardView").then((m) => ({ default: m.DashboardView })));
+const KanbanBoard      = lazy(() => import("@/components/board/KanbanBoard").then((m) => ({ default: m.KanbanBoard })));
+const ArchiveView      = lazy(() => import("@/components/board/ArchiveView").then((m) => ({ default: m.ArchiveView })));
+const StatsView        = lazy(() => import("@/components/board/StatsView").then((m) => ({ default: m.StatsView })));
 const ProjectSpaceView = lazy(() => import("@/components/spaces/ProjectSpaceView").then((m) => ({ default: m.ProjectSpaceView })));
-const ChatView        = lazy(() => import("@/components/chat/ChatView").then((m) => ({ default: m.ChatView })));
-const DocumentsView   = lazy(() => import("@/components/documents/DocumentsView").then((m) => ({ default: m.DocumentsView })));
-const SettingsView    = lazy(() => import("@/components/settings/SettingsView").then((m) => ({ default: m.SettingsView })));
+const ChatView         = lazy(() => import("@/components/chat/ChatView").then((m) => ({ default: m.ChatView })));
+const DocumentsView    = lazy(() => import("@/components/documents/DocumentsView").then((m) => ({ default: m.DocumentsView })));
+const SettingsView     = lazy(() => import("@/components/settings/SettingsView").then((m) => ({ default: m.SettingsView })));
 const EisenhowerMatrix = lazy(() => import("@/components/matrix/EisenhowerMatrix").then((m) => ({ default: m.EisenhowerMatrix })));
-const GoalsView       = lazy(() => import("@/components/goals/GoalsView").then((m) => ({ default: m.GoalsView })));
-const ExtractionModal = lazy(() => import("@/components/documents/ExtractionModal").then((m) => ({ default: m.ExtractionModal })));
+const GoalsView        = lazy(() => import("@/components/goals/GoalsView").then((m) => ({ default: m.GoalsView })));
+const ExtractionModal  = lazy(() => import("@/components/documents/ExtractionModal").then((m) => ({ default: m.ExtractionModal })));
+
+const Spinner = (
+  <div className="flex-1 flex items-center justify-center text-sm text-vault-text-muted h-full">
+    Loading…
+  </div>
+);
 
 function App() {
-  const { currentView, extractionPreview } = useAppStore();
+  const { extractionPreview } = useAppStore();
   const { initVault, loadTasks, loadConfig, startWatching, loadSpaces, saveSpace } = useVault();
   const { checkConnection } = useLlm();
 
@@ -36,7 +42,6 @@ function App() {
         if (cancelled) return;
         void checkConnection();
 
-        // Create "General" space if it doesn't exist
         const spaceIds = new Set(spaces.map((s: { id: string }) => s.id));
         if (!spaceIds.has("general")) {
           const generalSpace: ProjectSpace = {
@@ -54,7 +59,6 @@ function App() {
           spaceIds.add("general");
         }
 
-        // Auto-create spaces from existing task projects
         const currentTasks = useAppStore.getState().tasks;
         const projectNames = [...new Set(currentTasks.map((t) => t.project).filter(Boolean))];
         const toCreate = projectNames.filter((id) => !spaceIds.has(id)).map((projId) => ({
@@ -79,39 +83,8 @@ function App() {
     }
 
     bootstrap();
-
-    return () => {
-      cancelled = true;
-      invoke("stop_watching").catch(() => {});
-    };
+    return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const renderView = () => {
-    switch (currentView) {
-      case "dashboard":
-        return <DashboardView />;
-      case "board":
-        return <KanbanBoard />;
-      case "matrix":
-        return <EisenhowerMatrix />;
-      case "goals":
-        return <GoalsView />;
-      case "archive":
-        return <ArchiveView />;
-      case "stats":
-        return <StatsView />;
-      case "project-space":
-        return <ProjectSpaceView />;
-      case "chat":
-        return <ChatView />;
-      case "documents":
-        return <DocumentsView />;
-      case "settings":
-        return <SettingsView />;
-      default:
-        return <DashboardView />;
-    }
-  };
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -119,14 +92,21 @@ function App() {
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="flex-1 overflow-auto">
           <ErrorBoundary>
-            <Suspense
-              fallback={
-                <div className="flex-1 flex items-center justify-center text-sm text-vault-text-muted h-full">
-                  Loading…
-                </div>
-              }
-            >
-              {renderView()}
+            <Suspense fallback={Spinner}>
+              <Routes>
+                <Route path="/"           element={<DashboardView />} />
+                <Route path="/board"      element={<KanbanBoard />} />
+                <Route path="/matrix"     element={<EisenhowerMatrix />} />
+                <Route path="/goals"      element={<GoalsView />} />
+                <Route path="/archive"    element={<ArchiveView />} />
+                <Route path="/stats"      element={<StatsView />} />
+                <Route path="/chat"       element={<ChatView />} />
+                <Route path="/documents"  element={<DocumentsView />} />
+                <Route path="/settings"   element={<SettingsView />} />
+                <Route path="/space/:spaceId"      element={<ProjectSpaceView />} />
+                <Route path="/space/:spaceId/:tab" element={<ProjectSpaceView />} />
+                <Route path="*"           element={<Navigate to="/" replace />} />
+              </Routes>
             </Suspense>
           </ErrorBoundary>
         </div>

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Send,
   Loader2,
@@ -50,8 +51,8 @@ export function ChatView() {
     updateTask,
     config,
     models,
-    setView,
   } = useAppStore();
+  const navigate = useNavigate();
   const { saveTask } = useVault();
   const { planningChat, checkConnection } = useLlm();
 
@@ -383,7 +384,7 @@ export function ChatView() {
                   </p>
                   <div className="flex gap-3 justify-center">
                     <button
-                      onClick={() => setView("settings")}
+                      onClick={() => navigate("/settings")}
                       className="btn-primary text-sm flex items-center gap-2"
                     >
                       Go to Settings
@@ -686,7 +687,7 @@ export function ChatView() {
               <p className="text-xs text-vault-critical flex-1">
                 LM Studio not connected.
               </p>
-              <button onClick={() => setView("settings")} className="text-xs text-vault-accent hover:underline">
+              <button onClick={() => navigate("/settings")} className="text-xs text-vault-accent hover:underline">
                 Open Settings
               </button>
             </div>
@@ -696,7 +697,7 @@ export function ChatView() {
               <p className="text-xs text-vault-warning flex-1">
                 {models.length === 0 ? "No models loaded in LM Studio." : "No model selected."}
               </p>
-              <button onClick={() => setView("settings")} className="text-xs text-vault-accent hover:underline">
+              <button onClick={() => navigate("/settings")} className="text-xs text-vault-accent hover:underline">
                 {models.length === 0 ? "Load a Model" : "Select Model"}
               </button>
             </div>

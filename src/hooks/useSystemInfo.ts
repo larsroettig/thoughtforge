@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { api } from "@/lib/api";
 
 export interface SystemInfo {
   total_ram_gb: number;
@@ -10,7 +10,7 @@ export function useSystemInfo() {
   const [info, setInfo] = useState<SystemInfo | null>(null);
 
   useEffect(() => {
-    invoke<SystemInfo>("get_system_info")
+    api<SystemInfo>("get_system_info")
       .then(setInfo)
       .catch(() => {});
   }, []);

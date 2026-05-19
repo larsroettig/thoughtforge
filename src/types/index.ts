@@ -55,6 +55,8 @@ export const DEFAULT_STATUS_COLORS: StatusColors = {
   blocked: "#f85149",
 };
 
+export type LlmProvider = "lm_studio" | "ollama" | "open_ai" | "anthropic" | "custom";
+
 export interface VaultConfig {
   vault_path: string;
   lm_studio_url: string;
@@ -73,6 +75,10 @@ export interface VaultConfig {
   weekly_hours_target?: number;
   nav_order?: string[];
   nav_disabled?: string[];
+  llm_provider?: LlmProvider;
+  api_key?: string;
+  api_base_url?: string;
+  reranker_model?: string;
 }
 
 export interface LlmModel {

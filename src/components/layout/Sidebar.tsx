@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, memo } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   Gauge,
@@ -38,19 +39,18 @@ import { CreateSpaceModal as CreateSpaceModalInline } from "@/components/spaces/
 import { NotificationCenter } from "@/components/notifications/NotificationCenter";
 import { useAppStore } from "@/stores/appStore";
 import { useVault } from "@/hooks/useVault";
-import type { AppView } from "@/types";
 import { PROJECT_COLORS } from "@/types";
 
-const NAV_ITEMS: { id: AppView; label: string; icon: typeof LayoutDashboard }[] = [
-  { id: "dashboard", label: "Dashboard", icon: Gauge },
-  { id: "board", label: "Board", icon: LayoutDashboard },
-  { id: "matrix", label: "Matrix", icon: Grid2x2 },
-  { id: "goals", label: "Goals", icon: Target },
-  { id: "stats", label: "Weekly Review", icon: BarChart3 },
-  { id: "chat", label: "Chat", icon: MessageSquare },
-  { id: "documents", label: "Documents", icon: FileText },
-  { id: "archive", label: "Archive", icon: Archive },
-  { id: "settings", label: "Settings", icon: Settings },
+const NAV_ITEMS: { id: string; path: string; label: string; icon: typeof LayoutDashboard }[] = [
+  { id: "dashboard", path: "/",          label: "Dashboard",    icon: Gauge },
+  { id: "board",     path: "/board",     label: "Board",        icon: LayoutDashboard },
+  { id: "matrix",    path: "/matrix",    label: "Matrix",       icon: Grid2x2 },
+  { id: "goals",     path: "/goals",     label: "Goals",        icon: Target },
+  { id: "stats",     path: "/stats",     label: "Weekly Review",icon: BarChart3 },
+  { id: "chat",      path: "/chat",      label: "Chat",         icon: MessageSquare },
+  { id: "documents", path: "/documents", label: "Documents",    icon: FileText },
+  { id: "archive",   path: "/archive",   label: "Archive",      icon: Archive },
+  { id: "settings",  path: "/settings",  label: "Settings",     icon: Settings },
 ];
 
 // ── Sortable wrapper ──────────────────────────────────────────────────
@@ -239,9 +239,9 @@ const TimerDisplay = memo(function TimerDisplay({ startedAt }: { startedAt: numb
 });
 
 export function Sidebar() {
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
   const {
-    currentView,
-    setView,
     tasks,
     projectFilter,
     setProjectFilter,
@@ -249,8 +249,6 @@ export function Sidebar() {
     stopTimer,
     updateTask,
     projectSpaces,
-    activeSpaceId,
-    setActiveSpaceId,
     config,
   } = useAppStore();
   const { saveTask } = useVault();
@@ -395,14 +393,15 @@ export function Sidebar() {
           const visible = sorted.filter((i) => !disabled.has(i.id));
           return [...visible, settings].map((item) => {
             const Icon = item.icon;
+            const isActive = item.path === "/" ? pathname === "/" : pathname.startsWith(item.path);
             return (
               <button
                 key={item.id}
                 onClick={() => {
-                  setView(item.id);
+                  navigate(item.path);
                   if (item.id === "board") setProjectFilter(null);
                 }}
-                className={`sidebar-btn ${currentView === item.id ? "active" : ""}`}
+                className={`sidebar-btn ${isActive ? "active" : ""}`}
               >
                 <Icon className="w-4 h-4" />
                 <span className="flex-1 text-left">{item.label}</span>
@@ -456,9 +455,9 @@ export function Sidebar() {
                     key={space.id}
                     id={space.id}
                     space={space}
-                    isActive={currentView === "project-space" && activeSpaceId === space.id}
+                    isActive={pathname.startsWith(`/space/${space.id}`)}
                     taskCount={activeTasks.filter((t) => t.project === space.id && t.status !== "done").length}
-                    onOpen={() => { setActiveSpaceId(space.id); setView("project-space"); }}
+                    onOpen={() => navigate(`/space/${space.id}`)}
                   />
                 ))}
               </SortableContext>
@@ -469,11 +468,11 @@ export function Sidebar() {
               .filter(([name]) => !projectSpaces.some((s) => s.id === name))
               .map(([name, info]) => {
                 const color = PROJECT_COLORS[name] || PROJECT_COLORS.default;
-                const isActive = projectFilter === name && currentView === "board";
+                const isActive = projectFilter === name && pathname === "/board";
                 return (
                   <button
                     key={name}
-                    onClick={() => { setView("board"); setProjectFilter(isActive ? null : name); }}
+                    onClick={() => { navigate("/board"); setProjectFilter(isActive ? null : name); }}
                     className={`flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs transition-colors ${
                       isActive ? "bg-vault-card text-vault-text-bright" : "text-vault-text-muted hover:bg-vault-card hover:text-vault-text"
                     }`}

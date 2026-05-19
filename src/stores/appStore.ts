@@ -5,7 +5,6 @@ import type {
   LlmModel,
   ChatSession,
   ChatMessage,
-  AppView,
   BoardView,
   ExtractionPreview,
   ActiveTimer,
@@ -15,10 +14,6 @@ import type {
 import { DEFAULT_STATUS_COLORS } from "@/types";
 
 interface AppState {
-  // Navigation
-  currentView: AppView;
-  setView: (view: AppView) => void;
-
   // Board
   boardView: BoardView;
   setBoardView: (view: BoardView) => void;
@@ -66,8 +61,6 @@ interface AppState {
   // Project Spaces
   projectSpaces: ProjectSpace[];
   setProjectSpaces: (spaces: ProjectSpace[]) => void;
-  activeSpaceId: string | null;
-  setActiveSpaceId: (id: string | null) => void;
   addProjectSpace: (space: ProjectSpace) => void;
 
   // Space Notes (keyed by space id)
@@ -82,10 +75,6 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
-  // Navigation
-  currentView: "dashboard",
-  setView: (view) => set({ currentView: view }),
-
   // Board
   boardView: "time",
   setBoardView: (view) => set({ boardView: view }),
@@ -199,8 +188,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Project Spaces
   projectSpaces: [],
   setProjectSpaces: (spaces) => set({ projectSpaces: spaces }),
-  activeSpaceId: null,
-  setActiveSpaceId: (id) => set({ activeSpaceId: id }),
   addProjectSpace: (space) =>
     set((state) => ({ projectSpaces: [...state.projectSpaces, space] })),
 

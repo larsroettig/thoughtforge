@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { api } from "@/lib/api";
 import {
   Save,
   RefreshCw,
@@ -50,14 +50,11 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { check as checkUpdate, type Update } from "@tauri-apps/plugin-updater";
-import { relaunch } from "@tauri-apps/plugin-process";
-import { getVersion } from "@tauri-apps/api/app";
-import { open } from "@tauri-apps/plugin-dialog";
 import { useAppStore } from "@/stores/appStore";
 import { useVault } from "@/hooks/useVault";
-import { useLlm } from "@/hooks/useLlm";
+import { useLlm, resolveProviderUrl } from "@/hooks/useLlm";
 import { useTheme, type Theme } from "@/hooks/useTheme";
+import type { LlmProvider } from "@/types";
 import { ModelRecommendations } from "./ModelRecommendations";
 import { DEFAULT_STATUS_COLORS, STATUS_LABELS } from "@/types";
 import type { TaskStatus, StatusColors } from "@/types";
@@ -168,6 +165,7 @@ export function SettingsView() {
   const [checking, setChecking] = useState(false);
   const [saved, setSaved] = useState(false);
   const [editingStatusColor, setEditingStatusColor] = useState<TaskStatus | null>(null);
+  const [apiKeyVisible, setApiKeyVisible] = useState(false);
 
   const navSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -203,10 +201,6 @@ export function SettingsView() {
   const [appVersion, setAppVersion] = useState<string>("");
   const [binaryChecksum, setBinaryChecksum] = useState<string>("");
   const [checksumCopied, setChecksumCopied] = useState(false);
-  const [updateChecking, setUpdateChecking] = useState(false);
-  const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null);
-  const [updateStatus, setUpdateStatus] = useState<"idle" | "up-to-date" | "downloading" | "done">("idle");
-  const [downloadProgress, setDownloadProgress] = useState(0);
 
   const [mcpTokenVisible, setMcpTokenVisible] = useState(false);
   const [mcpCopied, setMcpCopied] = useState(false);
@@ -215,44 +209,9 @@ export function SettingsView() {
   const [mcpInfo, setMcpInfo] = useState<{ token: string; port: number; binary_path: string; enabled: boolean; http_enabled: boolean; vault_path: string } | null>(null);
 
   useEffect(() => {
-    getVersion().then(setAppVersion).catch(() => {});
-    invoke<string>("get_binary_checksum").then(setBinaryChecksum).catch(() => {});
+    fetch("/api/version").then((r) => r.json()).then((d: { version: string }) => setAppVersion(d.version)).catch(() => {});
+    api<string>("get_binary_checksum").then(setBinaryChecksum).catch(() => {});
   }, []);
-
-  const handleCheckUpdate = useCallback(async () => {
-    setUpdateChecking(true);
-    setUpdateStatus("idle");
-    setPendingUpdate(null);
-    try {
-      const update = await checkUpdate();
-      if (update?.available) {
-        setPendingUpdate(update);
-      } else {
-        setUpdateStatus("up-to-date");
-      }
-    } catch {
-      setUpdateStatus("up-to-date");
-    } finally {
-      setUpdateChecking(false);
-    }
-  }, []);
-
-  const handleInstallUpdate = useCallback(async () => {
-    if (!pendingUpdate) return;
-    setUpdateStatus("downloading");
-    setDownloadProgress(0);
-    let downloaded = 0;
-    let total = 0;
-    await pendingUpdate.downloadAndInstall((event) => {
-      if (event.event === "Started") total = event.data.contentLength ?? 0;
-      if (event.event === "Progress") {
-        downloaded += event.data.chunkLength;
-        setDownloadProgress(total > 0 ? Math.round((downloaded / total) * 100) : 0);
-      }
-      if (event.event === "Finished") setUpdateStatus("done");
-    });
-    await relaunch();
-  }, [pendingUpdate]);
 
   useEffect(() => {
     setForm(config);
@@ -266,19 +225,24 @@ export function SettingsView() {
 
   const handleCheckConnection = useCallback(async () => {
     setChecking(true);
-    await checkConnection();
+    await checkConnection({
+      base_url: resolveProviderUrl(form),
+      provider: form.llm_provider ?? "lm_studio",
+      api_key: form.api_key ?? "",
+    });
     setChecking(false);
-  }, [checkConnection]);
+  }, [checkConnection, form]);
 
-  const handleAddWatchFolder = useCallback(async () => {
-    const folder = await open({ directory: true, multiple: false });
-    if (folder) {
-      setForm((prev) => ({
-        ...prev,
-        watched_folders: [...prev.watched_folders, String(folder)],
-      }));
-    }
-  }, []);
+  const [newWatchFolder, setNewWatchFolder] = useState("");
+  const handleAddWatchFolder = useCallback(() => {
+    const path = newWatchFolder.trim();
+    if (!path) return;
+    setForm((prev) => ({
+      ...prev,
+      watched_folders: [...prev.watched_folders, path],
+    }));
+    setNewWatchFolder("");
+  }, [newWatchFolder]);
 
   const handleRemoveWatchFolder = useCallback((index: number) => {
     setForm((prev) => ({
@@ -287,24 +251,31 @@ export function SettingsView() {
     }));
   }, []);
 
+  const [newVaultPath, setNewVaultPath] = useState("");
   const handleChangeVault = useCallback(async () => {
-    const folder = await open({ directory: true, multiple: false });
-    if (!folder) return;
+    const path = newVaultPath.trim();
+    if (!path) return;
     setVaultChanging(true);
     try {
-      const resolved = await changeVaultPath(String(folder));
+      const resolved = await changeVaultPath(path);
       setForm((prev) => ({ ...prev, vault_path: resolved }));
+      setNewVaultPath("");
     } finally {
       setVaultChanging(false);
     }
-  }, [changeVaultPath]);
+  }, [changeVaultPath, newVaultPath]);
 
   const handleSave = useCallback(async () => {
     const toSave = { ...form, status_colors: statusColors };
     await saveConfig(toSave);
     setConfig(toSave);
     if (toSave.watched_folders.length > 0) await startWatching(toSave.watched_folders);
-    if (toSave.lm_studio_url !== config.lm_studio_url) await checkConnection();
+    if (
+      toSave.lm_studio_url !== config.lm_studio_url ||
+      toSave.llm_provider !== config.llm_provider ||
+      toSave.api_key !== config.api_key ||
+      toSave.api_base_url !== config.api_base_url
+    ) await checkConnection();
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }, [form, statusColors, saveConfig, setConfig, startWatching, checkConnection, config.lm_studio_url]);
@@ -324,11 +295,11 @@ export function SettingsView() {
     setConfig(toSave);
     try {
       if (enabled) {
-        await invoke("start_mcp_server");
-        const info = await invoke<{ token: string; port: number; binary_path: string; enabled: boolean; http_enabled: boolean; vault_path: string }>("get_mcp_info");
+        await api("start_mcp_server");
+        const info = await api<{ token: string; port: number; binary_path: string; enabled: boolean; http_enabled: boolean; vault_path: string }>("get_mcp_info");
         setMcpInfo(info);
       } else {
-        await invoke("stop_mcp_server");
+        await api("stop_mcp_server");
         setMcpInfo(null);
       }
     } catch (e) {
@@ -343,11 +314,11 @@ export function SettingsView() {
     setConfig(toSave);
     try {
       if (httpEnabled) {
-        await invoke("start_mcp_server");
-        const info = await invoke<{ token: string; port: number; binary_path: string; enabled: boolean; http_enabled: boolean; vault_path: string }>("get_mcp_info");
+        await api("start_mcp_server");
+        const info = await api<{ token: string; port: number; binary_path: string; enabled: boolean; http_enabled: boolean; vault_path: string }>("get_mcp_info");
         setMcpInfo(info);
       } else {
-        await invoke("stop_mcp_server");
+        await api("stop_mcp_server");
         setMcpInfo(null);
       }
     } catch (e) {
@@ -367,15 +338,14 @@ export function SettingsView() {
     setMcpTokenRegenerating(true);
     try {
       // Stop the server so the old token is no longer accepted.
-      if (form.mcp_enabled) await invoke("stop_mcp_server");
-      const newToken = await invoke<string>("regenerate_mcp_token");
+      if (form.mcp_enabled) await api("stop_mcp_server");
+      const newToken = await api<string>("regenerate_mcp_token");
       const updated = { ...form, mcp_token: newToken };
       setForm(updated);
       setConfig(updated);
-      // Restart the server with the new token.
       if (form.mcp_enabled) {
-        await invoke("start_mcp_server");
-        const info = await invoke<{ token: string; port: number; binary_path: string; enabled: boolean; http_enabled: boolean; vault_path: string }>("get_mcp_info");
+        await api("start_mcp_server");
+        const info = await api<{ token: string; port: number; binary_path: string; enabled: boolean; http_enabled: boolean; vault_path: string }>("get_mcp_info");
         setMcpInfo(info);
       }
     } catch (e) {
@@ -389,7 +359,7 @@ export function SettingsView() {
     let info = mcpInfo;
     if (!info) {
       try {
-        info = await invoke<{ token: string; port: number; binary_path: string; enabled: boolean; http_enabled: boolean; vault_path: string }>("get_mcp_info");
+        info = await api<{ token: string; port: number; binary_path: string; enabled: boolean; http_enabled: boolean; vault_path: string }>("get_mcp_info");
         setMcpInfo(info);
       } catch {
         return;
@@ -419,54 +389,137 @@ export function SettingsView() {
       <div className="max-w-2xl mx-auto px-6 py-8 space-y-8">
         <h2 className="text-xl font-bold text-vault-text-bright">Settings</h2>
 
-        {/* LM Studio Connection */}
+        {/* AI Provider */}
         <section className="space-y-4">
           <h3 className="text-sm font-semibold text-vault-text uppercase tracking-wide flex items-center gap-2">
             <Brain className="w-4 h-4 text-vault-accent" />
-            LM Studio
+            AI Provider
           </h3>
 
           <div className="card-base p-4 space-y-4">
-            {/* Connection URL */}
+            {/* Provider selector */}
             <div>
               <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
-                Server URL
+                Provider
               </label>
-              <div className="flex gap-2">
+              <select
+                value={form.llm_provider ?? "lm_studio"}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, llm_provider: e.target.value as LlmProvider }))
+                }
+                className="input-base w-full"
+              >
+                <option value="lm_studio">LM Studio (local)</option>
+                <option value="ollama">Ollama (local)</option>
+                <option value="open_ai">OpenAI</option>
+                <option value="anthropic">Anthropic (Claude)</option>
+                <option value="custom">Custom (OpenAI-compatible)</option>
+              </select>
+            </div>
+
+            {/* Server URL — shown for LM Studio and Custom */}
+            {(form.llm_provider === "lm_studio" || form.llm_provider === "custom" || !form.llm_provider) && (
+              <div>
+                <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
+                  {form.llm_provider === "custom" ? "Base URL" : "Server URL"}
+                </label>
                 <input
                   type="text"
                   value={form.lm_studio_url}
                   onChange={(e) =>
                     setForm((prev) => ({ ...prev, lm_studio_url: e.target.value }))
                   }
-                  placeholder="http://localhost:1234"
-                  className="input-base flex-1"
+                  placeholder={form.llm_provider === "custom" ? "https://your-api.example.com" : "http://localhost:1234"}
+                  className="input-base w-full"
                 />
+              </div>
+            )}
+
+            {/* Ollama: read-only URL */}
+            {form.llm_provider === "ollama" && (
+              <div>
+                <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
+                  Server URL
+                </label>
+                <input
+                  type="text"
+                  value="http://localhost:11434"
+                  readOnly
+                  className="input-base w-full opacity-60 cursor-default"
+                />
+              </div>
+            )}
+
+            {/* API Key — shown for external providers */}
+            {(form.llm_provider === "open_ai" || form.llm_provider === "anthropic" || form.llm_provider === "custom") && (
+              <div>
+                <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-1 block">
+                  API Key
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type={apiKeyVisible ? "text" : "password"}
+                    value={form.api_key ?? ""}
+                    onChange={(e) =>
+                      setForm((prev) => ({ ...prev, api_key: e.target.value }))
+                    }
+                    placeholder={
+                      form.llm_provider === "open_ai" ? "sk-..." :
+                      form.llm_provider === "anthropic" ? "sk-ant-..." :
+                      "your-api-key"
+                    }
+                    className="input-base flex-1 font-mono text-xs"
+                  />
+                  <button
+                    onClick={() => setApiKeyVisible((v) => !v)}
+                    className="btn-ghost p-2"
+                    title="Show / hide key"
+                  >
+                    {apiKeyVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+                <p className="text-[10px] text-vault-text-muted mt-1">
+                  Stored locally in your vault config. Never sent to any server other than the provider.
+                </p>
+              </div>
+            )}
+
+            {/* Test connection */}
+            <div>
+              <div className="flex items-center gap-2">
                 <button
                   onClick={handleCheckConnection}
                   disabled={checking}
                   className="btn-ghost flex items-center gap-1.5 text-xs"
                 >
                   {checking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                  Test
+                  Test connection
                 </button>
               </div>
               <div className="flex items-center gap-2 mt-2 text-xs">
                 {llmConnected ? (
                   <>
                     <Wifi className="w-3 h-3 text-vault-success" />
-                    <span className="text-vault-success">Connected - {models.length} model(s) available</span>
+                    <span className="text-vault-success">Connected — {models.length} model(s) available</span>
                   </>
                 ) : (
                   <>
                     <WifiOff className="w-3 h-3 text-vault-critical" />
-                    <span className="text-vault-critical">Not connected. Make sure LM Studio is running.</span>
+                    <span className="text-vault-critical">
+                      {(form.llm_provider === "open_ai" || form.llm_provider === "anthropic")
+                        ? "Connection failed. Check your API key."
+                        : form.llm_provider === "custom"
+                        ? "Connection failed. Check the URL and API key."
+                        : form.llm_provider === "ollama"
+                        ? "Not connected. Make sure Ollama is running."
+                        : "Not connected. Make sure LM Studio is running."}
+                    </span>
                   </>
                 )}
               </div>
             </div>
 
-            {/* Active Model -- prominent display */}
+            {/* Active Model */}
             <div>
               <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-2 block">
                 Active Model
@@ -480,7 +533,7 @@ export function SettingsView() {
                     <p className="text-[10px] text-vault-text-muted truncate">{activeModel?.id}</p>
                   </div>
                   <span className="text-[10px] bg-vault-success/15 text-vault-success px-2 py-0.5 rounded-full font-medium">
-                    Loaded
+                    Active
                   </span>
                 </div>
               ) : (
@@ -488,7 +541,7 @@ export function SettingsView() {
                   <AlertCircle className="w-5 h-5 text-vault-warning" />
                   <div className="flex-1">
                     <p className="text-sm font-medium text-vault-warning">No model selected</p>
-                    <p className="text-[10px] text-vault-text-muted">Select a model below or load one in LM Studio</p>
+                    <p className="text-[10px] text-vault-text-muted">Test connection first, then select a model</p>
                   </div>
                 </div>
               )}
@@ -509,73 +562,75 @@ export function SettingsView() {
 
               {models.length === 0 && llmConnected && (
                 <div className="mt-3 p-3 bg-vault-warning/10 border border-vault-warning/20 rounded-lg">
-                  <p className="text-xs text-vault-warning font-medium mb-1.5">
-                    No models loaded in LM Studio
-                  </p>
-                  <p className="text-[11px] text-vault-text-muted leading-relaxed">
-                    Open LM Studio and load a model, or run in terminal:
-                  </p>
-                  <code className="block mt-1.5 text-[11px] bg-vault-bg rounded px-2 py-1 text-vault-accent font-mono">
-                    lms load qwen2.5-7b-instruct
-                  </code>
-                  <p className="text-[10px] text-vault-text-muted mt-1.5">
-                    Then click "Test" above to refresh. Recommended: 7B+ for chat, 32B+ for extraction.
-                  </p>
-                </div>
-              )}
-
-              {!llmConnected && (
-                <div className="mt-3 p-3 bg-vault-critical/10 border border-vault-critical/20 rounded-lg">
-                  <p className="text-xs text-vault-critical font-medium mb-1">
-                    LM Studio not running
-                  </p>
+                  <p className="text-xs text-vault-warning font-medium mb-1.5">No models available</p>
                   <p className="text-[11px] text-vault-text-muted">
-                    Download and start LM Studio from{" "}
-                    <span className="text-vault-accent">lmstudio.ai</span>, then click "Test" above.
+                    {form.llm_provider === "lm_studio" && "Open LM Studio and load a model, then click Test above."}
+                    {form.llm_provider === "ollama" && "Pull a model with: ollama pull llama3.2"}
                   </p>
                 </div>
               )}
             </div>
 
-            {/* Embedding Model */}
+            {/* Reranker Model — optional, any provider */}
             <div>
               <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-2 block">
-                Embedding Model
+                Reranker Model
+                <span className="ml-2 normal-case font-normal text-vault-text-muted">(optional)</span>
               </label>
-              <p className="text-[11px] text-vault-text-muted mb-3">
-                Used for semantic search. All options are open-source and run 100% locally — no data leaves your machine.
+              <p className="text-[11px] text-vault-text-muted mb-2">
+                Used to re-rank search results. Leave blank to use the active model above.
+                Accepts any model ID available in your provider (e.g. <code className="bg-vault-bg px-1 rounded">qwen3-reranker</code>).
               </p>
-              <div className="space-y-2">
-                {EMBEDDING_MODELS.map((em) => {
-                  const selected = form.embedding_model === em.id;
-                  return (
-                    <button
-                      key={em.id}
-                      onClick={() => setForm((prev) => ({ ...prev, embedding_model: em.id }))}
-                      className={`w-full text-left rounded-lg px-3 py-2.5 border transition-colors ${
-                        selected
-                          ? "border-vault-accent/50 bg-vault-accent/5"
-                          : "border-vault-border bg-vault-bg hover:border-vault-text-muted"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className={`text-xs font-semibold ${selected ? "text-vault-accent" : "text-vault-text-bright"}`}>
-                          {em.label}
-                        </span>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <span className="text-[10px] text-vault-text-muted">{em.size}</span>
-                          <span className="text-[9px] bg-vault-success/10 text-vault-success px-1.5 py-0.5 rounded-full">local</span>
-                        </div>
-                      </div>
-                      <p className="text-[10px] text-vault-text-muted mt-0.5">{em.desc} · Context: {em.context}</p>
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="text-[10px] text-vault-text-muted mt-2">
-                Load the selected model in LM Studio under the <em>Embedding</em> tab before using semantic search.
-              </p>
+              <input
+                type="text"
+                value={form.reranker_model ?? ""}
+                onChange={(e) => setForm((prev) => ({ ...prev, reranker_model: e.target.value }))}
+                placeholder="Leave blank to use active model"
+                className="input-base w-full"
+              />
             </div>
+
+            {/* Embedding Model — only for local providers */}
+            {(!form.llm_provider || form.llm_provider === "lm_studio" || form.llm_provider === "ollama") && (
+              <div>
+                <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide mb-2 block">
+                  Embedding Model
+                </label>
+                <p className="text-[11px] text-vault-text-muted mb-3">
+                  Used for semantic search. Runs 100% locally — no data leaves your machine.
+                </p>
+                <div className="space-y-2">
+                  {EMBEDDING_MODELS.map((em) => {
+                    const selected = form.embedding_model === em.id;
+                    return (
+                      <button
+                        key={em.id}
+                        onClick={() => setForm((prev) => ({ ...prev, embedding_model: em.id }))}
+                        className={`w-full text-left rounded-lg px-3 py-2.5 border transition-colors ${
+                          selected
+                            ? "border-vault-accent/50 bg-vault-accent/5"
+                            : "border-vault-border bg-vault-bg hover:border-vault-text-muted"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`text-xs font-semibold ${selected ? "text-vault-accent" : "text-vault-text-bright"}`}>
+                            {em.label}
+                          </span>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <span className="text-[10px] text-vault-text-muted">{em.size}</span>
+                            <span className="text-[9px] bg-vault-success/10 text-vault-success px-1.5 py-0.5 rounded-full">local</span>
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-vault-text-muted mt-0.5">{em.desc} · Context: {em.context}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[10px] text-vault-text-muted mt-2">
+                  Load the selected model in LM Studio under the <em>Embedding</em> tab before using semantic search.
+                </p>
+              </div>
+            )}
           </div>
         </section>
 
@@ -756,21 +811,28 @@ export function SettingsView() {
             <label className="text-xs font-medium text-vault-text-muted uppercase tracking-wide block">
               Vault Path
             </label>
+            <p className="text-xs font-mono text-vault-text-muted">{form.vault_path}</p>
             <div className="flex items-center gap-2">
-              <input type="text" value={form.vault_path} className="input-base flex-1 min-w-0" readOnly />
+              <input
+                type="text"
+                value={newVaultPath}
+                onChange={(e) => setNewVaultPath(e.target.value)}
+                placeholder="Enter new vault path…"
+                className="input-base flex-1 min-w-0"
+              />
               <button
                 onClick={handleChangeVault}
-                disabled={vaultChanging}
+                disabled={vaultChanging || !newVaultPath.trim()}
                 className="btn-secondary flex items-center gap-1.5 shrink-0"
               >
                 {vaultChanging
                   ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   : <FolderPlus className="w-3.5 h-3.5" />}
-                Change…
+                Change
               </button>
             </div>
             <p className="text-xs text-vault-text-muted">
-              Pick any folder to start a clean vault there. Existing data is not deleted.
+              Enter a folder path to move your vault. Existing data is not deleted.
             </p>
           </div>
         </section>
@@ -790,9 +852,19 @@ export function SettingsView() {
                 </button>
               </div>
             ))}
-            <button onClick={handleAddWatchFolder} className="btn-ghost flex items-center gap-1.5 text-xs w-full justify-center">
-              <FolderPlus className="w-3.5 h-3.5" /> Add Watch Folder
-            </button>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={newWatchFolder}
+                onChange={(e) => setNewWatchFolder(e.target.value)}
+                placeholder="Enter folder path…"
+                className="input-base flex-1 min-w-0 text-xs"
+                onKeyDown={(e) => { if (e.key === "Enter") handleAddWatchFolder(); }}
+              />
+              <button onClick={handleAddWatchFolder} disabled={!newWatchFolder.trim()} className="btn-ghost flex items-center gap-1.5 text-xs shrink-0">
+                <FolderPlus className="w-3.5 h-3.5" /> Add
+              </button>
+            </div>
           </div>
         </section>
 
@@ -850,91 +922,44 @@ export function SettingsView() {
         <section className="space-y-4">
           <h3 className="text-sm font-semibold text-vault-text uppercase tracking-wide flex items-center gap-2">
             <ArrowUpCircle className="w-4 h-4 text-vault-accent" />
-            App Updates
+            App Version
           </h3>
           <div className="card-base p-4 space-y-4">
-
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-vault-text">Current version</p>
-              <p className="text-xs text-vault-text-muted font-mono">{appVersion || "0.1.0"}</p>
-            </div>
-
-            {updateStatus === "up-to-date" && (
-              <span className="flex items-center gap-1 text-xs text-vault-success">
-                <Check className="w-3.5 h-3.5" /> Up to date
-              </span>
-            )}
-          </div>
-
-          {binaryChecksum && (
-            <div className="flex items-center justify-between pt-1 border-t border-vault-border">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs text-vault-text-muted mb-0.5">SHA-256 checksum</p>
-                <p className="text-[11px] font-mono text-vault-text-muted break-all leading-relaxed">
-                  {binaryChecksum}
-                </p>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-vault-text">Current version</p>
+                <p className="text-xs text-vault-text-muted font-mono">{appVersion || "1.3.1"}</p>
               </div>
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(binaryChecksum).catch(() => {});
-                  setChecksumCopied(true);
-                  setTimeout(() => setChecksumCopied(false), 2000);
-                }}
-                className="btn-ghost p-1.5 ml-2 flex-shrink-0"
-                title="Copy checksum"
+              <a
+                href="https://github.com/lroettig/thoughtforge/releases"
+                target="_blank"
+                rel="noreferrer"
+                className="btn-secondary flex items-center gap-1.5 text-sm"
               >
-                {checksumCopied ? <Check className="w-3.5 h-3.5 text-vault-success" /> : <Copy className="w-3.5 h-3.5" />}
-              </button>
+                <RefreshCw className="w-3.5 h-3.5" /> Check GitHub
+              </a>
             </div>
-          )}
-
-          {pendingUpdate ? (
-            <div className="bg-vault-accent/10 border border-vault-accent/30 rounded-lg p-4 space-y-3">
-              <div className="flex items-center gap-2">
-                <Download className="w-4 h-4 text-vault-accent" />
-                <p className="text-sm font-semibold text-vault-accent">
-                  Version {pendingUpdate.version} available
-                </p>
-              </div>
-              {pendingUpdate.body && (
-                <div className="border-t border-vault-accent/20 pt-3">
-                  <p className="text-[10px] uppercase tracking-wider text-vault-text-muted font-semibold mb-1.5">Release Notes</p>
-                  <div className="text-xs text-vault-text-muted whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto">
-                    {pendingUpdate.body}
-                  </div>
+            {binaryChecksum && (
+              <div className="flex items-center justify-between pt-1 border-t border-vault-border">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs text-vault-text-muted mb-0.5">SHA-256 checksum</p>
+                  <p className="text-[11px] font-mono text-vault-text-muted break-all leading-relaxed">
+                    {binaryChecksum}
+                  </p>
                 </div>
-              )}
-              {updateStatus === "downloading" ? (
-                <div className="space-y-1">
-                  <div className="h-1.5 bg-vault-border rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-vault-accent transition-all"
-                      style={{ width: `${downloadProgress}%` }}
-                    />
-                  </div>
-                  <p className="text-xs text-vault-text-muted">{downloadProgress}% — installing…</p>
-                </div>
-              ) : (
                 <button
-                  onClick={handleInstallUpdate}
-                  className="btn-primary text-sm flex items-center gap-1.5"
+                  onClick={() => {
+                    navigator.clipboard.writeText(binaryChecksum).catch(() => {});
+                    setChecksumCopied(true);
+                    setTimeout(() => setChecksumCopied(false), 2000);
+                  }}
+                  className="btn-ghost p-1.5 ml-2 flex-shrink-0"
+                  title="Copy checksum"
                 >
-                  <Download className="w-3.5 h-3.5" /> Install &amp; Relaunch
+                  {checksumCopied ? <Check className="w-3.5 h-3.5 text-vault-success" /> : <Copy className="w-3.5 h-3.5" />}
                 </button>
-              )}
-            </div>
-          ) : (
-            <button
-              onClick={handleCheckUpdate}
-              disabled={updateChecking}
-              className="btn-secondary flex items-center gap-1.5 text-sm"
-            >
-              {updateChecking
-                ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Checking…</>
-                : <><RefreshCw className="w-3.5 h-3.5" /> Check for Updates</>}
-            </button>
-          )}
+              </div>
+            )}
           </div>
         </section>
 

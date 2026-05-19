@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import {
   Upload,
   FileText,
@@ -8,7 +8,6 @@ import {
   FolderOpen,
   RefreshCw,
 } from "lucide-react";
-import { open } from "@tauri-apps/plugin-dialog";
 import { useAppStore } from "@/stores/appStore";
 import { useVault } from "@/hooks/useVault";
 import { useLlm } from "@/hooks/useLlm";
@@ -23,22 +22,16 @@ export function DocumentsView() {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string>("");
   const [recentUploads, setRecentUploads] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleUpload = useCallback(async () => {
-    const files = await open({
-      multiple: true,
-      filters: [
-        {
-          name: "Documents",
-          extensions: ["txt", "md", "pdf"],
-        },
-      ],
-    });
+  const handleUpload = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
 
-    if (files) {
-      const paths = Array.isArray(files) ? files : [files];
-      setRecentUploads((prev) => [...prev, ...paths.map(String)]);
-    }
+  const handleFilesChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    setRecentUploads((prev) => [...prev, ...files.map((f) => f.name)]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }, []);
 
   const handleSelectFile = useCallback(
@@ -81,6 +74,14 @@ export function DocumentsView() {
       <div className="px-6 py-4 border-b border-vault-border flex items-center justify-between">
         <h2 className="text-xl font-bold text-vault-text-bright">Documents</h2>
         <div className="flex gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".txt,.md,.pdf"
+            multiple
+            className="hidden"
+            onChange={handleFilesChange}
+          />
           <button onClick={handleUpload} className="btn-primary flex items-center gap-1.5 text-xs">
             <Upload className="w-3.5 h-3.5" />
             Upload

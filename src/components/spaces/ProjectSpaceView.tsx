@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { parseTimeInput, formatHours } from "@/lib/time";
 import {
   ArrowLeft,
@@ -30,7 +31,6 @@ import {
 } from "lucide-react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
-import { open } from "@tauri-apps/plugin-dialog";
 import { useAppStore } from "@/stores/appStore";
 import { useShallow } from "zustand/react/shallow";
 import { useVault } from "@/hooks/useVault";
@@ -52,11 +52,10 @@ const TABS: { id: ProjectSpaceTab; label: string; icon: typeof LayoutGrid }[] = 
 ];
 
 export function ProjectSpaceView() {
+  const { spaceId } = useParams<{ spaceId: string }>();
+  const navigate = useNavigate();
   const {
     projectSpaces,
-    activeSpaceId,
-    setActiveSpaceId,
-    setView,
     tasks,
     setProjectSpaces,
     spaceNotes,
@@ -65,9 +64,6 @@ export function ProjectSpaceView() {
   } = useAppStore(
     useShallow((s) => ({
       projectSpaces: s.projectSpaces,
-      activeSpaceId: s.activeSpaceId,
-      setActiveSpaceId: s.setActiveSpaceId,
-      setView: s.setView,
       tasks: s.tasks,
       setProjectSpaces: s.setProjectSpaces,
       spaceNotes: s.spaceNotes,
@@ -75,6 +71,7 @@ export function ProjectSpaceView() {
       config: s.config,
     }))
   );
+  const activeSpaceId = spaceId ?? null;
   const { saveSpace: persistSpace, deleteSpace, saveTask, loadSpaceNotes, saveSpaceNote, deleteSpaceNote, indexSpaceNotes, searchSpaceNotes, spaceIndexStatus } = useVault();
   const { extractTasksFromText, isProcessing: llmProcessing } = useLlm();
 
@@ -323,31 +320,22 @@ export function ProjectSpaceView() {
   }, [noteMenu]);
 
   const handleUploadDoc = useCallback(async () => {
-    if (!space) return;
-    const files = await open({
-      multiple: true,
-      filters: [{ name: "Documents", extensions: ["pdf", "txt", "md", "docx", "csv", "json"] }],
-    });
-    if (files) {
-      console.log("Upload docs to space:", files);
-    }
-  }, [space]);
+    // File upload handled via browser input — see hidden file input in JSX
+  }, []);
 
   const handleArchiveSpace = useCallback(async () => {
     if (!space) return;
     const updated = { ...space, archived: true };
     setProjectSpaces(projectSpaces.map((s) => (s.id === space.id ? updated : s)));
     await persistSpace(updated);
-    setActiveSpaceId(null);
-    setView("dashboard");
-  }, [space, projectSpaces, setProjectSpaces, persistSpace, setActiveSpaceId, setView]);
+    navigate("/");
+  }, [space, projectSpaces, setProjectSpaces, persistSpace, navigate]);
 
   const handleDeleteSpace = useCallback(async () => {
     if (!space) return;
     await deleteSpace(space.id);
-    setActiveSpaceId(null);
-    setView("dashboard");
-  }, [space, deleteSpace, setActiveSpaceId, setView]);
+    navigate("/");
+  }, [space, deleteSpace, navigate]);
 
   const handleBookHours = useCallback(async () => {
     if (!space || !bookHours) return;
@@ -376,8 +364,7 @@ export function ProjectSpaceView() {
       clearTimeout(autoSaveTimer.current);
       if (editingNote && space) saveSpaceNote(space.id, editingNote);
     }
-    setActiveSpaceId(null);
-    setView("dashboard");
+    navigate("/");
   };
 
   if (!space) {

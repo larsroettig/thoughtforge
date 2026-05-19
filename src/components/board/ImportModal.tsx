@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   X,
   Upload,
@@ -7,8 +7,6 @@ import {
   Loader2,
   AlertTriangle,
 } from "lucide-react";
-import { open } from "@tauri-apps/plugin-dialog";
-import { invoke } from "@tauri-apps/api/core";
 import { useVault } from "@/hooks/useVault";
 import { useAppStore } from "@/stores/appStore";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
@@ -99,6 +97,7 @@ export function ImportModal({ onClose }: ImportModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>("");
   const [importDone, setImportDone] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { saveTask, loadTasks } = useVault();
   const trapRef = useFocusTrap<HTMLDivElement>();
@@ -109,26 +108,20 @@ export function ImportModal({ onClose }: ImportModalProps) {
     return () => document.removeEventListener("keydown", handler);
   }, [onClose]);
 
-  const handleFileSelect = useCallback(async () => {
-    const file = await open({
-      multiple: false,
-      filters: [
-        {
-          name: "Importable files",
-          extensions: ["json", "md", "txt"],
-        },
-      ],
-    });
+  const handleFileSelect = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
 
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (!file) return;
 
     setIsLoading(true);
     setError("");
 
     try {
-      const path = String(file);
-      const content = await invoke<string>("read_file_content", { path });
-      const filename = path.split("/").pop() || path;
+      const content = await file.text();
+      const filename = file.name;
       setImportSource(filename);
 
       let parsed: ParsedImportTask[] = [];
@@ -148,6 +141,8 @@ export function ImportModal({ onClose }: ImportModalProps) {
       setError(`Failed to read file: ${err}`);
     } finally {
       setIsLoading(false);
+      // Reset so the same file can be re-selected
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }, []);
 
@@ -257,6 +252,13 @@ export function ImportModal({ onClose }: ImportModalProps) {
           {/* File Selection */}
           {!importDone && importedTasks.length === 0 && (
             <div className="text-center py-12">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json,.md,.txt"
+                className="hidden"
+                onChange={handleFileChange}
+              />
               <button
                 onClick={handleFileSelect}
                 disabled={isLoading}

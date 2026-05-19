@@ -11,24 +11,36 @@ on:
         required: true
 
 jobs:
-  release-macos:
-    runs-on: macos-latest
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest    # Apple Silicon (M-series)
+            target: aarch64-apple-darwin
+            arch: aarch64
+          - os: macos-13        # Intel
+            target: x86_64-apple-darwin
+            arch: x86_64
+
+    runs-on: ${{ matrix.os }}
+
     permissions:
       contents: write
-      id-token: write    # required for SLSA provenance attestation
-      attestations: write # required for SLSA provenance attestation
+      id-token: write
+      attestations: write
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: 22
-          cache: npm
+          bun-version: latest
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -36,36 +48,49 @@ jobs:
           workspaces: src-tauri
 
       - name: Install frontend dependencies
-        run: npm ci
+        run: bun install --frozen-lockfile
 
-      - name: Build Tauri app
-        run: npm run tauri build
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      # Frontend MUST build before Cargo — rust-embed requires dist/ to exist
+      - name: Build frontend
+        run: bun run build
+
+      - name: Build binaries
+        run: cargo build --release --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }}
+
+      - name: Package
+        run: |
+          REF="${{ github.ref_name }}"
+          TAG="${REF:-${{ github.event.inputs.tag }}}"
+          VERSION="${TAG#v}"
+          OUTDIR="dist-pkg"
+          TARBALL="thoughtforge-${TAG}-${{ matrix.arch }}.tar.gz"
+          mkdir -p "$OUTDIR"
+          # Copy binaries and frontend alongside each other so the binary can find dist/
+          mkdir -p staging/dist
+          cp src-tauri/target/${{ matrix.target }}/release/thoughtforge staging/
+          cp src-tauri/target/${{ matrix.target }}/release/vaultmind-mcp staging/
+          cp -r dist/. staging/dist/
+          tar -czf "$OUTDIR/$TARBALL" -C staging .
+          # sha256 — macOS ships shasum, Linux ships sha256sum
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$OUTDIR/$TARBALL" | awk '{print $1}' > "$OUTDIR/$TARBALL.sha256"
+          else
+            shasum -a 256 "$OUTDIR/$TARBALL" | awk '{print $1}' > "$OUTDIR/$TARBALL.sha256"
+          fi
+          echo "TARBALL=$TARBALL" >> "$GITHUB_ENV"
+          echo "OUTDIR=$OUTDIR" >> "$GITHUB_ENV"
+
+      - name: Create / update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          tag_name: ${{ github.ref_name || github.event.inputs.tag }}
+          files: |
+            ${{ env.OUTDIR }}/*.tar.gz
+            ${{ env.OUTDIR }}/*.sha256
 
       - name: Generate SLSA provenance attestation
         uses: actions/attest-build-provenance@v2
         with:
-          subject-path: |
-            src-tauri/target/release/bundle/dmg/*.dmg
-            src-tauri/target/release/bundle/macos/*.app.tar.gz
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-bundle
-          path: |
-            src-tauri/target/release/bundle/dmg/*.dmg
-            src-tauri/target/release/bundle/macos/*.app.tar.gz
-            src-tauri/target/release/bundle/macos/*.app.tar.gz.sig
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
-        with:
-          generate_release_notes: true
-          draft: true
-          files: |
-            src-tauri/target/release/bundle/dmg/*.dmg
-            src-tauri/target/release/bundle/macos/*.app.tar.gz
-            src-tauri/target/release/bundle/macos/*.app.tar.gz.sig
+          subject-path: ${{ env.OUTDIR }}/*.tar.gz
