@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { api } from "@/lib/api";
 import { useAppStore } from "@/stores/appStore";
 import type { Task, VaultConfig, ProjectSpace, SpaceNote, NoteSearchResult, SmartGoal } from "@/types";
 
@@ -19,7 +19,7 @@ export function useVault() {
 
   const initVault = useCallback(async () => {
     try {
-      const path = await invoke<string>("init_vault");
+      const path = await api<string>("init_vault");
       console.log("Vault initialized at:", path);
       setVaultInitialized(true);
       return path;
@@ -31,7 +31,7 @@ export function useVault() {
 
   const loadTasks = useCallback(async () => {
     try {
-      const tasks = await invoke<Task[]>("read_tasks");
+      const tasks = await api<Task[]>("read_tasks");
       setTasks(tasks);
       return tasks;
     } catch (err) {
@@ -43,7 +43,7 @@ export function useVault() {
   const saveTask = useCallback(
     async (task: Task) => {
       try {
-        await invoke("write_task", { task });
+        await api("write_task", { task });
         const existing = useAppStore.getState().tasks.find((t) => t.id === task.id);
         if (existing) {
           updateTask(task.id, task);
@@ -61,7 +61,7 @@ export function useVault() {
   const deleteTask = useCallback(
     async (id: string) => {
       try {
-        await invoke("delete_task", { id });
+        await api("delete_task", { id });
         removeTask(id);
       } catch (err) {
         console.error("Failed to delete task:", err);
@@ -73,7 +73,7 @@ export function useVault() {
 
   const loadConfig = useCallback(async () => {
     try {
-      const config = await invoke<VaultConfig>("read_config");
+      const config = await api<VaultConfig>("read_config");
       setConfig(config);
       return config;
     } catch (err) {
@@ -85,7 +85,7 @@ export function useVault() {
   const saveConfig = useCallback(
     async (config: VaultConfig) => {
       try {
-        await invoke("write_config", { config });
+        await api("write_config", { config });
         setConfig(config);
       } catch (err) {
         console.error("Failed to save config:", err);
@@ -96,22 +96,17 @@ export function useVault() {
   );
 
   const readFileContent = useCallback(async (path: string): Promise<string> => {
-    return invoke<string>("read_file_content", { path });
+    return api<string>("read_file_content", { path });
   }, []);
 
-  const startWatching = useCallback(async (paths: string[]) => {
-    try {
-      await invoke("start_watching", { paths });
-    } catch (err) {
-      console.error("Failed to start watching:", err);
-    }
-  }, []);
+  // File watcher dropped — no-op in HTTP server mode
+  const startWatching = useCallback(async (_paths: string[]) => {}, []);
 
   // ── Project Spaces ──────────────────────────────────────────────────
 
   const loadSpaces = useCallback(async () => {
     try {
-      const raw = await invoke<ProjectSpace[]>("read_spaces");
+      const raw = await api<ProjectSpace[]>("read_spaces");
       const spaces = raw.map((s) => ({
         ...s,
         archived: s.archived || false,
@@ -128,7 +123,7 @@ export function useVault() {
 
   const saveSpace = useCallback(async (space: ProjectSpace) => {
     try {
-      await invoke("write_space", { space });
+      await api("write_space", { space });
     } catch (err) {
       console.error("Failed to save space:", err);
       throw err;
@@ -137,7 +132,7 @@ export function useVault() {
 
   const deleteSpace = useCallback(async (id: string) => {
     try {
-      await invoke("delete_space", { id });
+      await api("delete_space", { id });
       const current = useAppStore.getState().projectSpaces;
       setProjectSpaces(current.filter((s) => s.id !== id));
     } catch (err) {
@@ -148,7 +143,7 @@ export function useVault() {
   // ── Knowledge Search ────────────────────────────────────────────────
 
   const indexSpaceNotes = useCallback(async (spaceId: string): Promise<number> => {
-    return invoke<number>("index_space_notes", { spaceId });
+    return api<number>("index_space_notes", { space_id: spaceId });
   }, []);
 
   const searchSpaceNotes = useCallback(async (
@@ -156,18 +151,18 @@ export function useVault() {
     query: string,
     limit?: number
   ): Promise<NoteSearchResult[]> => {
-    return invoke<NoteSearchResult[]>("search_space_notes", { spaceId, query, limit });
+    return api<NoteSearchResult[]>("search_space_notes", { space_id: spaceId, query, limit });
   }, []);
 
   const spaceIndexStatus = useCallback(async (spaceId: string): Promise<{ indexed_count: number; last_modified_unix: number | null }> => {
-    return invoke("space_index_status", { spaceId });
+    return api("space_index_status", { space_id: spaceId });
   }, []);
 
   // ── Space Notes ─────────────────────────────────────────────────────
 
   const loadSpaceNotes = useCallback(async (spaceId: string) => {
     try {
-      const notes = await invoke<SpaceNote[]>("read_space_notes", { spaceId });
+      const notes = await api<SpaceNote[]>("read_space_notes", { space_id: spaceId });
       setSpaceNotes(spaceId, notes);
       return notes;
     } catch (err) {
@@ -178,7 +173,7 @@ export function useVault() {
 
   const saveSpaceNote = useCallback(async (spaceId: string, note: SpaceNote) => {
     try {
-      await invoke("write_space_note", { spaceId, note });
+      await api("write_space_note", { space_id: spaceId, note });
       upsertSpaceNote(spaceId, note);
     } catch (err) {
       console.error("Failed to save note:", err);
@@ -188,7 +183,7 @@ export function useVault() {
 
   const deleteSpaceNote = useCallback(async (spaceId: string, noteId: string) => {
     try {
-      await invoke("delete_space_note", { spaceId, noteId });
+      await api("delete_space_note", { space_id: spaceId, note_id: noteId });
       removeSpaceNote(spaceId, noteId);
     } catch (err) {
       console.error("Failed to delete note:", err);
@@ -207,7 +202,7 @@ export function useVault() {
     if (idx >= 0) goals[idx] = goal; else goals.push(goal);
     const updated = { ...space, goals };
     setProjectSpaces(spaces.map((s) => (s.id === updated.id ? updated : s)));
-    await invoke("write_space", { space: updated });
+    await api("write_space", { space: updated });
   }, [setProjectSpaces]);
 
   const deleteGoal = useCallback(async (goalId: string, spaceId: string) => {
@@ -216,17 +211,17 @@ export function useVault() {
     if (!space) return;
     const updated = { ...space, goals: (space.goals ?? []).filter((g) => g.id !== goalId) };
     setProjectSpaces(spaces.map((s) => (s.id === updated.id ? updated : s)));
-    await invoke("write_space", { space: updated });
+    await api("write_space", { space: updated });
   }, [setProjectSpaces]);
 
   const changeVaultPath = useCallback(async (newPath: string) => {
-    const resolved = await invoke<string>("change_vault_path", { newPath });
-    await invoke("init_vault");
-    const config = await invoke<VaultConfig>("read_config");
+    const resolved = await api<string>("change_vault_path", { new_path: newPath });
+    await api("init_vault");
+    const config = await api<VaultConfig>("read_config");
     setConfig(config);
-    const raw = await invoke<import("@/types").ProjectSpace[]>("read_spaces");
+    const raw = await api<import("@/types").ProjectSpace[]>("read_spaces");
     setProjectSpaces(raw.map((s) => ({ ...s, archived: s.archived || false, documents: s.documents || [], timeEntries: s.timeEntries || [] })));
-    const tasks = await invoke<import("@/types").Task[]>("read_tasks");
+    const tasks = await api<import("@/types").Task[]>("read_tasks");
     setTasks(tasks);
     return resolved;
   }, [setConfig, setProjectSpaces, setTasks]);

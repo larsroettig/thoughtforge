@@ -3,45 +3,38 @@
 ## Development
 
 ```bash
-npm run tauri dev        # full Tauri dev server (hot reload)
-npm run dev              # Vite only (browser, no Tauri APIs)
+# Terminal 1 — Rust server (serves on :7432)
+cargo run --manifest-path src-tauri/Cargo.toml
+
+# Terminal 2 — Vite HMR (proxies /api to :7432)
+bun run dev
 ```
 
 ## Type-check & Tests
 
 ```bash
-npx tsc --noEmit         # TypeScript type check
-npm test                 # Vitest unit tests
-cargo test --manifest-path src-tauri/Cargo.toml   # Rust tests
+bunx tsc --noEmit                                   # TypeScript type check
+bun test                                            # Vitest unit tests
+cargo test --manifest-path src-tauri/Cargo.toml    # Rust tests
 ```
 
-## Local app bundle (macOS)
+## Build (critical order — rust-embed requires dist/ first)
 
 ```bash
-# Clean stale temp DMG files (nullglob avoids zsh "no matches" error)
-setopt nullglob 2>/dev/null; rm -f src-tauri/target/release/bundle/dmg/rw.*.dmg; true
-# Build .app only (faster than full bundle)
-npm run tauri build -- --bundles app
+bun run build                                      # 1. compile frontend → dist/
+cargo build --manifest-path src-tauri/Cargo.toml  # 2. embed dist/ into binary
 ```
 
-Output: `src-tauri/target/release/bundle/macos/ThoughtForge.app`
-
-## Full release bundle (DMG + updater JSON)
+## Release build (optimised)
 
 ```bash
-npm run tauri build
-```
-
-Output: `src-tauri/target/release/bundle/dmg/ThoughtForge_*.dmg`
-
-## Cargo compile only
-
-```bash
-cargo build --manifest-path src-tauri/Cargo.toml
+bun run build
+cargo build --release --manifest-path src-tauri/Cargo.toml
 ```
 
 ## Notes
 
-- `.cargo/config.toml` at the project root links Apple's Accelerate framework (required by turbovec/ndarray on macOS). Do not remove it.
-- `npm run build` runs `tsc && vite build` — it's the frontend-only step that `tauri build` calls automatically.
+- **Build order matters.** `cargo build` uses rust-embed to bake `dist/` into the binary at compile time. Always run `bun run build` first.
+- `build.rs` emits `cargo:rerun-if-changed=../dist` so Cargo automatically rebuilds when `dist/` changes.
+- `.cargo/config.toml` links Apple's Accelerate framework (required by turbovec on macOS). Do not remove it.
 - Do not bump the version number unless the user explicitly asks to release a new version.

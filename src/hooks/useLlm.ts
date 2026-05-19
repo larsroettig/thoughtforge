@@ -1,8 +1,7 @@
 import { useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { api } from "@/lib/api";
 import { useAppStore } from "@/stores/appStore";
-import type { ChatMessage, Task, SpaceNote } from "@/types";
+import type { ChatMessage, LlmProvider, Task, SpaceNote, VaultConfig } from "@/types";
 import { getNonWorkingDays, isWorkingDay } from "@/lib/holidays";
 
 const EXTRACTION_SYSTEM_PROMPT = `You are an expert at extracting action items from meeting transcripts.
@@ -100,7 +99,6 @@ export function parseActions(text: string): { cleanText: string; actions: TaskAc
   if (actions.length === 0) {
     const jsonActions = parseJsonResponse(text);
     if (jsonActions.length > 0) {
-      // Remove JSON block from clean text
       const cleanText = text
         .replace(/```json\s*\n?[\s\S]*?\n?```/g, "")
         .replace(/\{[\s\S]*"(?:Monday|Tuesday|Wednesday|Thursday|Friday|task|due)"[\s\S]*\}/g, "")
@@ -116,22 +114,14 @@ export function parseActions(text: string): { cleanText: string; actions: TaskAc
   };
 }
 
-/**
- * Parse JSON responses from models that ignore the [[ACTION:...]] format.
- * Handles structures like:
- * { "Monday": [{ "task": "title", "due_date": "2026-05-14" }], ... }
- * or [{ "task": "title", "due_date": "...", "priority": "..." }]
- */
 function parseJsonResponse(text: string): TaskAction[] {
   const actions: TaskAction[] = [];
 
-  // Try to extract JSON from the text (might be wrapped in ```json blocks)
   let jsonStr = text;
   const codeBlockMatch = text.match(/```json?\s*\n?([\s\S]*?)\n?```/);
   if (codeBlockMatch) {
     jsonStr = codeBlockMatch[1];
   } else {
-    // Try to find a JSON object/array in the text
     const jsonMatch = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
     if (jsonMatch) {
       jsonStr = jsonMatch[1];
@@ -143,7 +133,6 @@ function parseJsonResponse(text: string): TaskAction[] {
   try {
     const data = JSON.parse(jsonStr);
 
-    // Format: { "Monday": [...], "Tuesday": [...], ... }
     const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
     if (typeof data === "object" && !Array.isArray(data)) {
       for (const key of Object.keys(data)) {
@@ -154,19 +143,10 @@ function parseJsonResponse(text: string): TaskAction[] {
               const title = item.task || item.title || item.name || "";
               const due = item.due_date || item.due || item.date || "";
               if (title && due) {
-                actions.push({
-                  type: "set_due",
-                  titleMatch: title,
-                  value: due,
-                });
+                actions.push({ type: "set_due", titleMatch: title, value: due });
               }
-              // Also handle priority changes
               if (item.priority) {
-                actions.push({
-                  type: "set_priority",
-                  titleMatch: title,
-                  value: item.priority,
-                });
+                actions.push({ type: "set_priority", titleMatch: title, value: item.priority });
               }
             }
           }
@@ -174,7 +154,6 @@ function parseJsonResponse(text: string): TaskAction[] {
       }
     }
 
-    // Format: [{ "task": "...", "due_date": "...", ... }]
     if (Array.isArray(data)) {
       for (const item of data) {
         const title = item.task || item.title || item.name || "";
@@ -197,15 +176,59 @@ function parseJsonResponse(text: string): TaskAction[] {
   return actions;
 }
 
+/**
+ * Parses a JSON array from LLM output, with partial recovery for truncated responses.
+ * Reasoning models (e.g. Gemma) consume tokens on chain-of-thought before emitting JSON,
+ * so finish_reason=length can cut off the array mid-object. We salvage complete objects.
+ */
+function parsePartialJsonArray(text: string): Array<Record<string, unknown>> {
+  let jsonStr = text.trim();
+  if (jsonStr.startsWith("```")) {
+    jsonStr = jsonStr.replace(/^```json?\n?/, "").replace(/\n?```$/, "").trim();
+  }
+
+  try {
+    const parsed = JSON.parse(jsonStr);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    // Truncated — extract complete {...} objects
+  }
+
+  const objects: Array<Record<string, unknown>> = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escape = false;
+
+  for (let i = 0; i < jsonStr.length; i++) {
+    const ch = jsonStr[i];
+    if (escape) { escape = false; continue; }
+    if (ch === "\\" && inString) { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+
+    if (ch === "{") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === "}") {
+      depth--;
+      if (depth === 0 && start !== -1) {
+        try {
+          objects.push(JSON.parse(jsonStr.slice(start, i + 1)) as Record<string, unknown>);
+        } catch { /* malformed object, skip */ }
+        start = -1;
+      }
+    }
+  }
+
+  return objects;
+}
+
 export function findTaskByTitle(tasks: Task[], titleMatch: string): Task | null {
   const lower = titleMatch.toLowerCase();
-  // Exact substring match first
-  const exact = tasks.find((t) =>
-    t.title.toLowerCase().includes(lower)
-  );
+  const exact = tasks.find((t) => t.title.toLowerCase().includes(lower));
   if (exact) return exact;
 
-  // Fuzzy: try matching individual words
   const words = lower.split(/\s+/).filter((w) => w.length > 2);
   if (words.length === 0) return null;
 
@@ -224,6 +247,18 @@ export function findTaskByTitle(tasks: Task[], titleMatch: string): Task | null 
   return bestMatch;
 }
 
+/** Compute the effective base URL from config, mirroring Rust's provider_base_url(). */
+export function resolveProviderUrl(config: Partial<VaultConfig>): string {
+  if (config.api_base_url) return config.api_base_url;
+  switch (config.llm_provider) {
+    case "ollama":    return "http://localhost:11434";
+    case "open_ai":  return "https://api.openai.com";
+    case "anthropic": return "https://api.anthropic.com";
+    case "custom":   return config.lm_studio_url ?? "";
+    default:         return config.lm_studio_url ?? "http://localhost:1234";
+  }
+}
+
 export function useLlm() {
   const {
     config,
@@ -235,11 +270,18 @@ export function useLlm() {
     setIsProcessing,
   } = useAppStore();
 
-  const checkConnection = useCallback(async () => {
+  const checkConnection = useCallback(async (overrides?: {
+    base_url?: string;
+    provider?: LlmProvider;
+    api_key?: string;
+  }) => {
+    const base_url = overrides?.base_url ?? resolveProviderUrl(config);
+    const provider  = overrides?.provider  ?? config.llm_provider  ?? "lm_studio";
+    const api_key   = overrides?.api_key   ?? config.api_key        ?? "";
     try {
-      const result = await invoke<Array<{ id: string; object: string }>>(
+      const result = await api<Array<{ id: string; object: string }>>(
         "list_models",
-        { baseUrl: config.lm_studio_url }
+        { base_url, provider, api_key }
       );
       setModels(result);
       setLlmConnected(true);
@@ -249,20 +291,18 @@ export function useLlm() {
       setModels([]);
       return false;
     }
-  }, [config.lm_studio_url, setModels, setLlmConnected]);
+  }, [config, setModels, setLlmConnected]);
 
   const chatCompletion = useCallback(
-    async (messages: ChatMessage[]): Promise<string> => {
-      const result = await invoke<string>("chat_completion", {
-        baseUrl: config.lm_studio_url,
+    async (messages: ChatMessage[], maxTokens = 4096): Promise<string> => {
+      return api<string>("chat_completion", {
         model: config.active_model,
         messages,
         temperature: 0.7,
-        maxTokens: 4096,
+        max_tokens: maxTokens,
       });
-      return result;
     },
-    [config.lm_studio_url, config.active_model]
+    [config.active_model]
   );
 
   const streamChat = useCallback(
@@ -271,37 +311,37 @@ export function useLlm() {
       onChunk: (text: string) => void,
       onDone: () => void
     ): Promise<() => void> => {
-      const streamId = crypto.randomUUID();
-
-      const unlisten1 = await listen<string>(
-        `stream-chunk-${streamId}`,
-        (event) => { onChunk(event.payload); }
-      );
-
-      const cleanup = () => { unlisten1(); unlisten2(); };
-
-      const unlisten2 = await listen(`stream-done-${streamId}`, () => {
-        onDone();
-        cleanup();
+      // Step 1: register session, get session_id
+      const { session_id } = await api<{ session_id: string }>("stream_chat", {
+        model: config.active_model,
+        messages,
+        temperature: 0.7,
+        max_tokens: 4096,
       });
 
-      try {
-        await invoke("stream_chat", {
-          baseUrl: config.lm_studio_url,
-          model: config.active_model,
-          messages,
-          temperature: 0.7,
-          maxTokens: 4096,
-          streamId,
-        });
-      } catch (err) {
-        cleanup();
-        throw err;
-      }
+      // Step 2: open SSE stream
+      const es = new EventSource(`/api/stream_chat/${session_id}`);
 
-      return cleanup;
+      es.onmessage = (event) => {
+        onChunk(event.data as string);
+      };
+
+      es.onerror = () => {
+        onDone();
+        es.close();
+      };
+
+      // Server sends event: done when streaming is finished
+      es.addEventListener("done", () => {
+        onDone();
+        es.close();
+      });
+
+      return () => {
+        es.close();
+      };
     },
-    [config.lm_studio_url, config.active_model]
+    [config.active_model]
   );
 
   const extractTasksFromText = useCallback(
@@ -338,15 +378,19 @@ export function useLlm() {
             },
           ];
 
-          const response = await chatCompletion(messages);
+          // Use 16 384 tokens so reasoning models have budget after chain-of-thought
+          const response = await chatCompletion(messages, 16384);
+
+          // Partial recovery handles finish_reason=length (truncated JSON arrays)
+          const extracted = parsePartialJsonArray(response);
+          if (extracted.length === 0 && response.trim().length > 0) {
+            console.error(
+              `LLM extraction chunk ${i}: no parseable tasks. Response prefix:`,
+              response.slice(0, 300)
+            );
+          }
 
           try {
-            let jsonStr = response.trim();
-            if (jsonStr.startsWith("```")) {
-              jsonStr = jsonStr.replace(/^```json?\n?/, "").replace(/\n?```$/, "");
-            }
-            const extracted = JSON.parse(jsonStr) as Array<Record<string, unknown>>;
-
             for (const item of extracted) {
               const id = `task_${crypto.randomUUID()}`;
               allTasks.push({
@@ -369,8 +413,8 @@ export function useLlm() {
                 notes: "",
               });
             }
-          } catch {
-            console.warn("Failed to parse LLM extraction response for chunk", i);
+          } catch (err) {
+            console.error(`Failed to map extraction results for chunk ${i}:`, err);
           }
         }
 
@@ -393,19 +437,13 @@ export function useLlm() {
     const dueToday = openTasks.filter((t) => t.due === today);
 
     const weekEnd = new Date();
-    weekEnd.setDate(weekEnd.getDate() + 14); // Look 2 weeks ahead
+    weekEnd.setDate(weekEnd.getDate() + 14);
     const weekEndStr = weekEnd.toISOString().split("T")[0];
     const dueThisWeek = openTasks.filter(
       (t) => t.due && t.due >= today && t.due <= weekEndStr
     );
 
-    // Non-working days in the next 2 weeks
     const nonWorkingDays = getNonWorkingDays(today, weekEndStr, country);
-    const nonWorkingStr = nonWorkingDays
-      .map((d) => `- ${d.date} (${d.name})`)
-      .join("\n");
-
-    // Tasks scheduled on non-working days (need rescheduling)
     const tasksOnNonWorking = openTasks.filter(
       (t) => t.due && !isWorkingDay(t.due, country)
     );
@@ -413,21 +451,17 @@ export function useLlm() {
     const todayIsWorking = isWorkingDay(today, country);
     const projects = [...new Set(openTasks.map((t) => t.project).filter(Boolean))];
 
-    // Only include RELEVANT tasks (max 30) -- prioritize overdue, due soon, high priority
     const priorityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
     const relevantTasks = [...openTasks]
       .sort((a, b) => {
-        // Overdue first
         if (a.due && a.due < today && !(b.due && b.due < today)) return -1;
         if (b.due && b.due < today && !(a.due && a.due < today)) return 1;
-        // Due soon next
         if (a.due && b.due) {
           const cmp = a.due.localeCompare(b.due);
           if (cmp !== 0) return cmp;
         }
         if (a.due && !b.due) return -1;
         if (!a.due && b.due) return 1;
-        // Then by priority
         return (priorityOrder[a.priority] ?? 2) - (priorityOrder[b.priority] ?? 2);
       })
       .slice(0, 30);
@@ -436,11 +470,13 @@ export function useLlm() {
       .map((t) => `- "${t.title}" [${t.status}] ${t.priority}${t.due ? ` due:${t.due}` : ""} project:${t.project || "-"}`)
       .join("\n");
 
-    // Compact non-working days (only holidays, weekends are implied)
     const holidays = nonWorkingDays.filter((d) => d.name !== "Saturday" && d.name !== "Sunday");
     const holidayStr = holidays.length > 0
       ? holidays.map((d) => `${d.date} ${d.name}`).join(", ")
       : "none";
+
+    // suppress unused var warning — kept for context completeness
+    void dueThisWeek;
 
     return `Today: ${today} (${weekday})${!todayIsWorking ? " NON-WORKING" : ""} | Country: ${country}
 Open: ${openTasks.length} | Overdue: ${overdue.length} | Due today: ${dueToday.length}
@@ -498,7 +534,7 @@ ${taskLines || "(none)"}`;
         messages,
         (chunk) => { chunks.push(chunk); onChunk(chunk); },
         () => {
-          onDone(); // immediately unblock UI
+          onDone();
           void (async () => {
             if (cancelled) return;
             const streamedText = chunks.join("");
@@ -556,7 +592,7 @@ Keep answers concise and grounded in the actual data shown.`;
         messages,
         (chunk) => { chunks.push(chunk); onChunk(chunk); },
         () => {
-          onDone(); // immediately unblock UI
+          onDone();
           void (async () => {
             if (cancelled) return;
             const streamedText = chunks.join("");

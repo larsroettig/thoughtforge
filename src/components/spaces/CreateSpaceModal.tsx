@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { X, Plus } from "lucide-react";
 import { useAppStore } from "@/stores/appStore";
 import { useVault } from "@/hooks/useVault";
@@ -15,7 +16,8 @@ const COLORS = [
 ];
 
 export function CreateSpaceModal({ onClose }: Props) {
-  const { addProjectSpace, setActiveSpaceId, setView } = useAppStore();
+  const navigate = useNavigate();
+  const { addProjectSpace } = useAppStore();
   const { saveSpace } = useVault();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -43,8 +45,7 @@ export function CreateSpaceModal({ onClose }: Props) {
     };
     addProjectSpace(space);
     await saveSpace(space);
-    setActiveSpaceId(id);
-    setView("project-space");
+    navigate(`/space/${id}`);
     onClose();
   };
 

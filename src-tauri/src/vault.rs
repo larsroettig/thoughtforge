@@ -29,7 +29,6 @@ pub struct SystemInfo {
     pub cpu_arch: String,
 }
 
-#[tauri::command]
 pub fn get_system_info() -> SystemInfo {
     use sysinfo::System;
     let cpu_arch = std::env::consts::ARCH.to_string();
@@ -95,7 +94,6 @@ pub fn vault_dir() -> PathBuf {
     home_dir().join("Documents").join("ThoughtForge")
 }
 
-#[tauri::command]
 pub fn change_vault_path(new_path: String) -> Result<String, String> {
     let override_file = vault_path_override_file();
     if new_path.is_empty() {
@@ -234,6 +232,17 @@ impl Default for StatusColors {
     }
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum LlmProvider {
+    #[default]
+    LmStudio,
+    Ollama,
+    OpenAi,
+    Anthropic,
+    Custom,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VaultConfig {
     pub vault_path: String,
@@ -267,6 +276,18 @@ pub struct VaultConfig {
     /// Nav items that are hidden from the sidebar. "settings" can never be hidden.
     #[serde(default)]
     pub nav_disabled: Vec<String>,
+    /// Which LLM provider to use (lm_studio, ollama, open_ai, anthropic, custom).
+    #[serde(default)]
+    pub llm_provider: LlmProvider,
+    /// API key for external providers (OpenAI, Anthropic, custom). Stored locally.
+    #[serde(default)]
+    pub api_key: String,
+    /// Override base URL (empty = use provider default). For Ollama or custom endpoints.
+    #[serde(default)]
+    pub api_base_url: String,
+    /// Optional dedicated reranker model. Empty = fall back to active_model.
+    #[serde(default)]
+    pub reranker_model: String,
 }
 
 fn default_weekly_hours() -> u32 {
@@ -301,11 +322,24 @@ impl Default for VaultConfig {
             weekly_hours_target: 38,
             nav_order: vec![],
             nav_disabled: vec![],
+            llm_provider: LlmProvider::default(),
+            api_key: String::new(),
+            api_base_url: String::new(),
+            reranker_model: String::new(),
         }
     }
 }
 
-#[tauri::command]
+/// Synchronous init for CLI commands — creates vault directories if missing.
+pub fn init_vault_sync() -> Result<(), String> {
+    let base = vault_dir();
+    for dir in &["boards", "uploads/transcripts", "uploads/documents", "spaces", "skills"] {
+        fs::create_dir_all(base.join(dir))
+            .map_err(|e| format!("Failed to create {dir}: {e}"))?;
+    }
+    Ok(())
+}
+
 pub async fn init_vault() -> Result<String, String> {
     let base = vault_dir();
     let dirs = [
@@ -389,7 +423,6 @@ fn find_task_path(id: &str) -> Option<PathBuf> {
     None
 }
 
-#[tauri::command]
 pub fn read_tasks() -> Result<Vec<TaskData>, String> {
     let mut tasks = Vec::new();
 
@@ -504,7 +537,6 @@ fn parse_task_markdown(content: &str) -> Option<TaskData> {
     Some(task)
 }
 
-#[tauri::command]
 pub async fn write_task(task: TaskData) -> Result<(), String> {
     validate_id_component(&task.id)?;
     if !task.project.is_empty() {
@@ -598,7 +630,6 @@ subtasks:
     Ok(())
 }
 
-#[tauri::command]
 pub async fn delete_task(id: String, space_id: Option<String>) -> Result<(), String> {
     validate_id_component(&id)?;
 
@@ -630,7 +661,6 @@ pub async fn delete_task(id: String, space_id: Option<String>) -> Result<(), Str
 // ── Config ───────────────────────────────────────────────────────────────
 
 /// Generate a fresh MCP bearer token, persist it to config, and return the new token.
-#[tauri::command]
 pub fn regenerate_mcp_token() -> Result<String, String> {
     let config_path = vault_dir().join("config.yaml");
     let mut config = vault_config();
@@ -643,7 +673,6 @@ pub fn regenerate_mcp_token() -> Result<String, String> {
     Ok(new_token)
 }
 
-#[tauri::command]
 pub fn read_config() -> Result<VaultConfig, String> {
     let config_path = vault_dir().join("config.yaml");
     if !config_path.exists() {
@@ -657,7 +686,6 @@ pub fn read_config() -> Result<VaultConfig, String> {
         .map_err(|e| format!("Failed to parse config: {}", e))
 }
 
-#[tauri::command]
 pub async fn write_config(config: VaultConfig) -> Result<(), String> {
     let config_path = vault_dir().join("config.yaml");
     let content = serde_json::to_string_pretty(&config)
@@ -672,7 +700,6 @@ pub async fn write_config(config: VaultConfig) -> Result<(), String> {
 
 // ── Uploads ──────────────────────────────────────────────────────────────
 
-#[tauri::command]
 pub fn list_uploads() -> Result<Vec<String>, String> {
     let mut files = Vec::new();
     let uploads_dir = vault_dir().join("uploads");
@@ -699,7 +726,6 @@ pub fn list_uploads() -> Result<Vec<String>, String> {
     Ok(files)
 }
 
-#[tauri::command]
 pub fn read_file_content(path: String) -> Result<String, String> {
     let requested = std::path::Path::new(&path)
         .canonicalize()
@@ -731,7 +757,6 @@ async fn ensure_space_dirs(id: &str) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
 pub fn read_spaces() -> Result<Vec<serde_json::Value>, String> {
     let sd = spaces_dir();
     if !sd.exists() {
@@ -762,7 +787,6 @@ pub fn read_spaces() -> Result<Vec<serde_json::Value>, String> {
     Ok(spaces)
 }
 
-#[tauri::command]
 pub async fn write_space(space: serde_json::Value) -> Result<(), String> {
     let id = space.get("id")
         .and_then(|v| v.as_str())
@@ -787,7 +811,6 @@ pub async fn write_space(space: serde_json::Value) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
 pub fn delete_space(id: String) -> Result<(), String> {
     validate_id_component(&id)?;
     let dir = space_dir(&id);
@@ -858,12 +881,10 @@ fn parse_note_markdown(content: &str) -> Option<NoteData> {
     Some(note)
 }
 
-#[tauri::command]
 pub fn read_space_notes(space_id: String) -> Result<Vec<NoteData>, String> {
     read_space_notes_internal(&space_id)
 }
 
-#[tauri::command]
 pub async fn write_space_note(space_id: String, note: NoteData) -> Result<(), String> {
     validate_id_component(&space_id)?;
     validate_id_component(&note.id)?;
@@ -881,7 +902,6 @@ pub async fn write_space_note(space_id: String, note: NoteData) -> Result<(), St
     Ok(())
 }
 
-#[tauri::command]
 pub async fn delete_space_note(space_id: String, note_id: String) -> Result<(), String> {
     validate_id_component(&space_id)?;
     validate_id_component(&note_id)?;
@@ -960,12 +980,10 @@ fn skill_to_md(skill: &SkillData) -> String {
     )
 }
 
-#[tauri::command]
 pub fn list_skills() -> Result<Vec<SkillData>, String> {
     read_skills()
 }
 
-#[tauri::command]
 pub async fn write_skill(skill: SkillData) -> Result<(), String> {
     validate_id_component(&skill.id)?;
     let dir = skills_dir();
@@ -979,7 +997,6 @@ pub async fn write_skill(skill: SkillData) -> Result<(), String> {
         .map_err(|e| format!("Failed to write skill: {}", e))
 }
 
-#[tauri::command]
 pub async fn delete_skill(id: String) -> Result<(), String> {
     validate_id_component(&id)?;
     let path = skills_dir().join(format!("{}.md", id));
