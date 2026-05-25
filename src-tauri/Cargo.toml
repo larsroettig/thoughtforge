@@ -38,7 +38,7 @@ sysinfo = { version = "0.32", default-features = false, features = ["system"] }
 url = "2"
 rmcp = { version = "1.7.0", features = ["server", "macros", "transport-io", "transport-streamable-http-server"] }
 clap = { version = "4.6.1", features = ["derive"] }
-turbovec = "0.2"
+turbovec = "0.5"
 blas-src = { version = "0.14", features = ["accelerate"] }
 sha2 = "0.11"
 hex = "0.4"
