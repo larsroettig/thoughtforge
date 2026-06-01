@@ -34,7 +34,7 @@ tokio-stream = { version = "0.1", features = ["sync"] }
 futures-util = "0.3"
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
-sysinfo = { version = "0.32", default-features = false, features = ["system"] }
+sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 url = "2"
 rmcp = { version = "1.7.0", features = ["server", "macros", "transport-io", "transport-streamable-http-server"] }
 clap = { version = "4.6.1", features = ["derive"] }
