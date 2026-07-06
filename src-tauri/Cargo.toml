@@ -36,7 +36,7 @@ uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 sysinfo = { version = "0.32", default-features = false, features = ["system"] }
 url = "2"
-rmcp = { version = "1.7.0", features = ["server", "macros", "transport-io", "transport-streamable-http-server"] }
+rmcp = { version = "2.1.0", features = ["server", "macros", "transport-io", "transport-streamable-http-server"] }
 clap = { version = "4.6.1", features = ["derive"] }
 turbovec = "0.2"
 blas-src = { version = "0.14", features = ["accelerate"] }
